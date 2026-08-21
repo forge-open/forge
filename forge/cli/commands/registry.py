@@ -80,6 +80,7 @@ def create_default_registry() -> SlashCommandRegistry:
     from forge.cli.commands.init import register_init_command
     from forge.cli.commands.memory import register_memory_command
     from forge.cli.commands.model import register_model_commands
+    from forge.cli.commands.remote import register_remote_command
     from forge.cli.commands.status import register_status_command
     from forge.cli.commands.version import register_version_command
 
@@ -88,6 +89,7 @@ def create_default_registry() -> SlashCommandRegistry:
     register_help_command(registry)
     register_status_command(registry)
     register_model_commands(registry)
+    register_remote_command(registry)
     register_history_commands(registry)
     register_context_command(registry)
     register_files_command(registry)
@@ -100,7 +102,11 @@ def create_default_registry() -> SlashCommandRegistry:
 
     # Register exit / quit commands
     def exit_handler(shell: Any, args: list[str]) -> bool:
-        if hasattr(shell, "console"):
+        if hasattr(shell, "remote_manager") and shell.remote_manager:
+            shell.remote_manager.shutdown()
+        elif hasattr(shell, "orchestrator") and hasattr(shell.orchestrator, "remote_manager"):
+            shell.orchestrator.remote_manager.shutdown()
+        elif hasattr(shell, "console"):
             shell.console.print("[yellow]Exiting Forge. Goodbye![/yellow]\n")
         else:
             print("Exiting Forge. Goodbye!\n")

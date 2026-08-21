@@ -115,6 +115,7 @@ class ForgeShell:
     def __init__(self, orchestrator: AgentOrchestrator):
         self.orchestrator = orchestrator
         self.console = console
+        self.remote_manager = getattr(orchestrator, "remote_manager", None)
         self.registry = create_default_registry()
         self.last_metrics: ExecutionMetrics | None = None
         self.session = None
@@ -371,11 +372,16 @@ class ForgeShell:
     def run_single_prompt(self, prompt: str) -> None:
         """Executes a single non-interactive prompt with streaming response."""
         try:
+            if self.remote_manager:
+                self.remote_manager.ensure_remote_gpu(interactive=False, orchestrator=self.orchestrator)
             self._stream_response(prompt, use_history=False)
         except KeyboardInterrupt:
             print("\n[Operation Cancelled]")
         except Exception as e:
             print(f"\nError executing prompt: {e}")
+        finally:
+            if self.remote_manager:
+                self.remote_manager.shutdown()
 
     def _handle_slash_command(self, cmd: str) -> bool:
         """Helper delegating slash command execution to registry for backward compatibility."""
@@ -384,27 +390,32 @@ class ForgeShell:
     def run(self) -> None:
         """Main interactive REPL loop."""
         self.print_banner()
+        if self.remote_manager:
+            self.remote_manager.ensure_remote_gpu(interactive=True, orchestrator=self.orchestrator)
         self.print_status()
 
-        while True:
-            try:
-                prompt_input = self.get_user_input()
-                if not prompt_input:
+        try:
+            while True:
+                try:
+                    prompt_input = self.get_user_input()
+                    if not prompt_input:
+                        continue
+
+                    if prompt_input.startswith("/"):
+                        should_exit = self.registry.execute(prompt_input, self)
+                        if should_exit:
+                            break
+                        continue
+
+                    self._stream_response(prompt_input, use_history=True)
+
+                except KeyboardInterrupt:
+                    print("\n^C (Cancelled command)\n")
                     continue
-
-                if prompt_input.startswith("/"):
-                    should_exit = self.registry.execute(prompt_input, self)
-                    if should_exit:
-                        break
-                    continue
-
-                self._stream_response(prompt_input, use_history=True)
-
-            except KeyboardInterrupt:
-                print("\n^C (Cancelled command)\n")
-                continue
-            except EOFError:
-                print("\nExiting Forge. Goodbye!")
-                break
-            except Exception as e:
-                print(f"\nUnexpected Error: {e}\n")
+                except EOFError:
+                    break
+                except Exception as e:
+                    print(f"\nUnexpected Error: {e}\n")
+        finally:
+            if self.remote_manager:
+                self.remote_manager.shutdown()

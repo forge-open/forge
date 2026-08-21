@@ -70,13 +70,14 @@ Forge acts as an agentic harness between your workspace and an inference backend
 ## 📊 CURRENT vs. ROADMAP
 
 ### CURRENT (v0.2.0)
+- [x] **Automatic Remote GPU Management**: Native Lightning AI Studio & GPU lifecycle orchestration (`forge` automatically prompts, starts, tunnels, polls, and shuts down remote GPUs). See [docs/REMOTE_GPU.md](docs/REMOTE_GPU.md).
 - [x] **OpenAI Compatible API Client**: Generic `/v1` provider supporting vLLM, SGLang, Ollama, and Cloud endpoints.
 - [x] **Dynamic Model Discovery**: Queries `GET /v1/models` automatically to detect active backend models.
 - [x] **Modern Terminal UX**: Bordered prompt input box, non-blocking thinking status indicator (`✦ Forge is thinking...`), live markdown streaming panel, and inference metrics (`⚡ 0.067s TTFT · 13.7s total · 18.7 tok/s · 256 tokens`).
-- [x] **Slash Command System**: Interactive floating autocomplete menu (`/help`, `/status`, `/model`, `/models`, `/context`, `/files`, `/git`, `/history`, `/clear`, `/new`, `/config`, `/doctor`, `/version`, `/exit`).
+- [x] **Slash Command System**: Interactive floating autocomplete menu (`/help`, `/status`, `/model`, `/models`, `/remote`, `/context`, `/files`, `/git`, `/history`, `/clear`, `/new`, `/config`, `/doctor`, `/version`, `/exit`).
 - [x] **Conversation & Memory**: ConversationManager maintaining multi-turn context and persistent session memory.
 - [x] **Workspace Tools**: Safe file editing, command execution, test runner, git diff/status tools.
-- [x] **Offline Test Suite**: 41 passing unit tests running purely offline with mocks.
+- [x] **Offline Test Suite**: 54 passing unit tests running purely offline with mocks.
 
 ### ROADMAP
 - [ ] **Intelligent Model Routing**: Dynamic task dispatching between primary coding models and secondary reviewer models.

@@ -13,6 +13,9 @@ except ImportError:
     pass
 
 
+from forge.remote.config import RemoteConfig, load_remote_config
+
+
 @dataclass
 class ModelConfig:
     name: str
@@ -42,6 +45,7 @@ class ForgeConfig:
     safe_mode: bool = True
     drive_vault_path: str = "/content/drive/MyDrive/AI Model Vault"
     models: dict[str, ModelConfig] = field(default_factory=dict)
+    remote: RemoteConfig = field(default_factory=RemoteConfig)
 
     def get_primary_model(self) -> ModelConfig:
         return self.models.get(
@@ -135,9 +139,17 @@ def load_config(config_path: str | None = None) -> ForgeConfig:
                                 top_p=float(mdata.get("top_p", 0.95)),
                                 max_tokens=int(mdata.get("max_tokens", cfg.max_tokens)),
                             )
+                if "remote" in data and isinstance(data["remote"], dict):
+                    cfg.remote = load_remote_config(data["remote"])
                 break
             except Exception:
                 pass
+
+    if not hasattr(cfg, "remote") or cfg.remote is None:
+        cfg.remote = load_remote_config()
+    else:
+        # Re-apply environment variable overrides onto cfg.remote
+        cfg.remote = load_remote_config(cfg.remote.__dict__)
 
     # Environment variable overrides
     if os.getenv("FORGE_PRIMARY_MODEL"):

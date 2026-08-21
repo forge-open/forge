@@ -10,6 +10,7 @@ from forge.config.settings import ForgeConfig
 from forge.context.context_builder import ContextBuilder
 from forge.git.git_manager import GitManager
 from forge.memory.project_memory import ProjectMemory
+from forge.remote.manager import RemoteManager, get_remote_manager
 from forge.router.model_router import ModelRouter, RoutingDecision
 from forge.tools.base import ToolRegistry
 from forge.tools.file_tools import (
@@ -30,6 +31,7 @@ class AgentOrchestrator:
     def __init__(self, config: ForgeConfig):
         self.config = config
         self.router = ModelRouter(config)
+        self.remote_manager: RemoteManager = get_remote_manager(config.remote)
         self.registry = ToolRegistry()
         self.context_builder = ContextBuilder()
         self.memory = ProjectMemory()
