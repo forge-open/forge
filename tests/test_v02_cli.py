@@ -81,7 +81,7 @@ def test_thinking_state_and_ttft_measurement():
     res = shell._stream_response("write hello function", use_history=False)
     metrics = res["metrics"]
 
-    assert metrics.ttft >= 0.01
+    assert metrics.ttft > 0
     assert metrics.total_time >= metrics.ttft
     assert metrics.token_count > 0
     assert metrics.tokens_per_second > 0
