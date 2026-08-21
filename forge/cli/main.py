@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import sys
+
 import typer
-from typing import Optional, List
 
 # Reconfigure stdout/stderr encoding for Windows PowerShell UTF-8 compatibility
 if hasattr(sys.stdout, "reconfigure"):
@@ -14,9 +16,9 @@ if hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
-from forge.config.settings import load_config
 from forge.agent.orchestrator import AgentOrchestrator
 from forge.cli.shell import ForgeShell
+from forge.config.settings import load_config
 
 app = typer.Typer(
     name="forge",
@@ -29,9 +31,9 @@ app = typer.Typer(
 @app.callback()
 def main_cli(
     ctx: typer.Context,
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Specify active model ID or key"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", "-u", help="Specify vLLM server base URL"),
-    prompt: Optional[List[str]] = typer.Argument(None, help="Optional prompt to execute non-interactively"),
+    model: str | None = typer.Option(None, "--model", "-m", help="Specify active model ID or key"),
+    base_url: str | None = typer.Option(None, "--base-url", "-u", help="Specify vLLM server base URL"),
+    prompt: list[str] | None = typer.Argument(None, help="Optional prompt to execute non-interactively"),
 ) -> None:
     if ctx.invoked_subcommand is not None:
         return

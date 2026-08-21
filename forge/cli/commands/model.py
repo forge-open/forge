@@ -1,9 +1,9 @@
-from typing import Any, List
+from typing import Any
+
 from rich.table import Table
-from rich.panel import Panel
 
 
-def handle_model(shell: Any, args: List[str]) -> bool:
+def handle_model(shell: Any, args: list[str]) -> bool:
     """Handles /model command: displays current active model details or changes active model if argument provided."""
     if args:
         new_model = args[0]
@@ -19,7 +19,7 @@ def handle_model(shell: Any, args: List[str]) -> bool:
     return False
 
 
-def handle_models(shell: Any, args: List[str]) -> bool:
+def handle_models(shell: Any, args: list[str]) -> bool:
     """Handles /models command: queries GET /v1/models and displays available models table."""
     health = shell.orchestrator.check_server_status()
     active_model_id = shell.orchestrator.get_active_model_name()

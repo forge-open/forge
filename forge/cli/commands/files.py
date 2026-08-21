@@ -1,9 +1,10 @@
 import os
-from typing import Any, List
+from typing import Any
+
 from rich.table import Table
 
 
-def handle_files(shell: Any, args: List[str]) -> bool:
+def handle_files(shell: Any, args: list[str]) -> bool:
     """Lists files and directories in current working directory."""
     cwd = os.getcwd()
     try:

@@ -1,10 +1,10 @@
 import os
-from typing import Any, List
-from rich.panel import Panel
+from typing import Any
+
 from rich.table import Table
 
 
-def handle_context(shell: Any, args: List[str]) -> bool:
+def handle_context(shell: Any, args: list[str]) -> bool:
     """Displays current repository context summary."""
     cwd = os.getcwd()
     git_branch = shell.orchestrator.git.get_current_branch() or "main"

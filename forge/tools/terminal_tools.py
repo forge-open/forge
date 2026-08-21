@@ -1,7 +1,9 @@
 import subprocess
 import sys
-from typing import Dict, Any, Optional
+from typing import Any
+
 from forge.tools.base import BaseTool
+
 
 class RunCommandTool(BaseTool):
     name = "run_command"
@@ -23,7 +25,7 @@ class RunCommandTool(BaseTool):
         dangerous_keywords = ["rm -rf", "del /f", "git reset --hard", "format", "pip install -g", "sudo"]
         return any(k in cmd_lower for k in dangerous_keywords)
 
-    def execute(self, command: str, cwd: str = ".", auto_confirm: bool = False, **kwargs) -> Dict[str, Any]:
+    def execute(self, command: str, cwd: str = ".", auto_confirm: bool = False, **kwargs) -> dict[str, Any]:
         if self.safe_mode and self.is_destructive(command) and not auto_confirm:
             return {
                 "error": f"Command '{command}' blocked by Safe Mode (destructive operation). Pass auto_confirm or use --auto mode to proceed."
@@ -58,7 +60,7 @@ class RunTestsTool(BaseTool):
         }
     }
 
-    def execute(self, test_path: str = "tests", **kwargs) -> Dict[str, Any]:
+    def execute(self, test_path: str = "tests", **kwargs) -> dict[str, Any]:
         cmd = f"{sys.executable} -m pytest {test_path}"
         try:
             res = subprocess.run(

@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-from forge.context.repository_map import RepositoryMap
+
 from forge.context.file_selector import FileSelector
+from forge.context.repository_map import RepositoryMap
+
 
 class ContextBuilder:
     """Assembles prompt contexts with minimal token overhead."""
@@ -11,8 +14,8 @@ class ContextBuilder:
         self.repo_map = RepositoryMap(root_dir)
         self.file_selector = FileSelector(root_dir)
 
-    def build_context(self, task_prompt: str, explicit_files: Optional[List[str]] = None) -> str:
-        parts: List[str] = []
+    def build_context(self, task_prompt: str, explicit_files: list[str] | None = None) -> str:
+        parts: list[str] = []
         
         # 1. Repo Map Overview
         parts.append("=== REPOSITORY MAP ===")

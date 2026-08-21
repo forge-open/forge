@@ -1,5 +1,6 @@
 from deploy.colab.hardware_check import get_hardware_info, print_hardware_report
 
+
 def test_hardware_check():
     info = get_hardware_info()
     assert "gpu" in info

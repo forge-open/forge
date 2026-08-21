@@ -1,8 +1,9 @@
-from typing import Any, List
+from typing import Any
+
 from rich.table import Table
 
 
-def handle_config(shell: Any, args: List[str]) -> bool:
+def handle_config(shell: Any, args: list[str]) -> bool:
     """Displays Forge configuration settings."""
     cfg = shell.orchestrator.config
     try:

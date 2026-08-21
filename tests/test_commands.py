@@ -1,26 +1,31 @@
-import os
 from unittest.mock import MagicMock, patch
+
 import pytest
 
-from forge.config.settings import ForgeConfig
 from forge.agent.orchestrator import AgentOrchestrator
-from forge.cli.commands.registry import SlashCommand, SlashCommandRegistry, create_default_registry
-from forge.cli.commands.help import handle_help
-from forge.cli.commands.status import handle_status
-from forge.cli.commands.model import handle_model, handle_models
-from forge.cli.commands.history import handle_history, handle_clear, handle_new
+from forge.cli.commands.config import handle_config
 from forge.cli.commands.context import handle_context
+from forge.cli.commands.doctor import handle_doctor
 from forge.cli.commands.files import handle_files
 from forge.cli.commands.git import handle_git
-from forge.cli.commands.config import handle_config
-from forge.cli.commands.doctor import handle_doctor
-from forge.cli.commands.version import handle_version, FORGE_VERSION
-from forge.cli.shell import ForgeShell, SlashCommandCompleter, HAS_PROMPT_TOOLKIT
+from forge.cli.commands.help import handle_help
+from forge.cli.commands.history import handle_clear, handle_history, handle_new
+from forge.cli.commands.model import handle_model, handle_models
+from forge.cli.commands.registry import (
+    SlashCommand,
+    SlashCommandRegistry,
+    create_default_registry,
+)
+from forge.cli.commands.status import handle_status
+from forge.cli.commands.version import handle_version
+from forge.cli.shell import HAS_PROMPT_TOOLKIT, ForgeShell, SlashCommandCompleter
+from forge.config.settings import ForgeConfig
 
 
 def test_command_registry_basic():
     registry = SlashCommandRegistry()
-    dummy_fn = lambda s, a: False
+    def dummy_fn(s, a):
+        return False
     cmd = SlashCommand(name="testcmd", description="Test description", handler=dummy_fn, aliases=["tcmd"])
 
     registry.register(cmd)

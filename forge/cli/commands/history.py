@@ -1,9 +1,10 @@
 import os
-from typing import Any, List
+from typing import Any
+
 from rich.table import Table
 
 
-def handle_history(shell: Any, args: List[str]) -> bool:
+def handle_history(shell: Any, args: list[str]) -> bool:
     """Displays current session conversation history."""
     conv = shell.orchestrator.conversation
     messages = conv.get_messages()
@@ -33,7 +34,7 @@ def handle_history(shell: Any, args: List[str]) -> bool:
     return False
 
 
-def handle_clear(shell: Any, args: List[str]) -> bool:
+def handle_clear(shell: Any, args: list[str]) -> bool:
     """Clears conversation history and terminal screen."""
     os.system("cls" if os.name == "nt" else "clear")
     shell.orchestrator.clear_conversation()
@@ -45,7 +46,7 @@ def handle_clear(shell: Any, args: List[str]) -> bool:
     return False
 
 
-def handle_new(shell: Any, args: List[str]) -> bool:
+def handle_new(shell: Any, args: list[str]) -> bool:
     """Starts a new conversation session."""
     shell.orchestrator.clear_conversation()
     try:

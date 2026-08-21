@@ -1,10 +1,11 @@
-import sys
 import os
-from typing import Any, List
+import sys
+from typing import Any
+
 from rich.table import Table
 
 
-def handle_doctor(shell: Any, args: List[str]) -> bool:
+def handle_doctor(shell: Any, args: list[str]) -> bool:
     """Runs diagnostics on Python environment, dependencies, configuration, and backend connection."""
     health = shell.orchestrator.check_server_status()
     reachable = health.get("reachable", False)
@@ -21,7 +22,10 @@ def handle_doctor(shell: Any, args: List[str]) -> bool:
 
         # Core dependencies check
         try:
-            import typer, rich, httpx, prompt_toolkit
+            import httpx  # noqa: F401
+            import prompt_toolkit  # noqa: F401
+            import rich  # noqa: F401
+            import typer  # noqa: F401
             table.add_row("Dependencies", "[green]✓ PASS[/green]", "typer, rich, httpx, prompt_toolkit loaded")
         except ImportError as e:
             table.add_row("Dependencies", "[red]❌ FAIL[/red]", f"Missing dependency: {e}")

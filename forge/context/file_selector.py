@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Dict, Any
+
 
 class FileSelector:
     """Selects relevant project files matching task query."""
@@ -7,7 +7,7 @@ class FileSelector:
     def __init__(self, root_dir: str = "."):
         self.root_dir = Path(root_dir)
 
-    def select_relevant_files(self, task_query: str, max_files: int = 5) -> List[str]:
+    def select_relevant_files(self, task_query: str, max_files: int = 5) -> list[str]:
         keywords = [k.lower() for k in task_query.split() if len(k) > 3]
         matched_files = []
 

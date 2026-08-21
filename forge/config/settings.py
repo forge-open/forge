@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any, Optional
+
 import yaml
 
 try:
@@ -35,11 +37,11 @@ class ForgeConfig:
         "such as 'We need answer the user...', 'Need produce final answer...', or 'Need think through...'. "
         "Never expose internal thoughts or meta commentary."
     )
-    primary_model: str = "glm"
-    secondary_model: str = "kimi"
+    primary_model: str = "qwen3.8-27b-fp8"
+    secondary_model: str = "qwen2.5-coder-7b"
     safe_mode: bool = True
     drive_vault_path: str = "/content/drive/MyDrive/AI Model Vault"
-    models: Dict[str, ModelConfig] = field(default_factory=dict)
+    models: dict[str, ModelConfig] = field(default_factory=dict)
 
     def get_primary_model(self) -> ModelConfig:
         return self.models.get(
@@ -55,15 +57,15 @@ class ForgeConfig:
     def get_secondary_model(self) -> ModelConfig:
         return self.models.get(
             self.secondary_model,
-            ModelConfig(name="Kimi-K2.5", base_url="http://localhost:8001/v1"),
+            ModelConfig(name="qwen2.5-coder-7b", base_url=self.base_url),
         )
 
 
-def load_config(config_path: Optional[str] = None) -> ForgeConfig:
+def load_config(config_path: str | None = None) -> ForgeConfig:
     """Loads configuration from environment variables, yaml config, or defaults."""
-    base_url = os.getenv("FORGE_BASE_URL") or os.getenv("GLM_BASE_URL") or os.getenv("GLM_ENDPOINT") or "http://localhost:8000/v1"
+    base_url = os.getenv("FORGE_BASE_URL") or "http://localhost:8000/v1"
     model = os.getenv("FORGE_MODEL") or ""
-    
+
     try:
         temperature = float(os.getenv("FORGE_TEMPERATURE", "0.1"))
     except ValueError:
@@ -81,20 +83,14 @@ def load_config(config_path: Optional[str] = None) -> ForgeConfig:
         max_tokens=max_tokens,
     )
 
-    # Initialize default models
-    cfg.models["glm"] = ModelConfig(
-        name=model or "GLM-5.2",
+    # Initialize default model entry
+    cfg.models["qwen"] = ModelConfig(
+        name=model or "Qwen3.8 27B FP8",
         provider="openai-compatible",
         base_url=base_url,
-        api_key=os.getenv("GLM_API_KEY") or "local-key",
+        api_key=os.getenv("FORGE_API_KEY") or "local-key",
         temperature=temperature,
         max_tokens=max_tokens,
-    )
-    cfg.models["kimi"] = ModelConfig(
-        name="Kimi-K2.5",
-        provider="openai-compatible",
-        base_url=os.getenv("KIMI_BASE_URL") or os.getenv("KIMI_ENDPOINT") or "http://localhost:8001/v1",
-        api_key=os.getenv("KIMI_API_KEY") or "local-key",
     )
 
     # Check potential config locations

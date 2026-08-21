@@ -1,9 +1,9 @@
 import json
-import os
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+
 from forge.utils.logging import logger
+
 
 @dataclass
 class ModelManifestEntry:
@@ -39,7 +39,7 @@ class ModelVault:
         except Exception as e:
             logger.warning(f"Could not initialize vault directories at {self.vault_path}: {e}")
 
-    def load_manifest(self) -> Dict[str, ModelManifestEntry]:
+    def load_manifest(self) -> dict[str, ModelManifestEntry]:
         """Loads models.json manifest."""
         if not self.manifest_file.exists():
             return {}
@@ -54,7 +54,7 @@ class ModelVault:
             logger.error(f"Error reading manifest {self.manifest_file}: {e}")
             return {}
 
-    def save_manifest(self, manifest: Dict[str, ModelManifestEntry]) -> None:
+    def save_manifest(self, manifest: dict[str, ModelManifestEntry]) -> None:
         """Saves models.json manifest."""
         try:
             self.configs_dir.mkdir(parents=True, exist_ok=True)
@@ -77,10 +77,7 @@ class ModelVault:
         
         # Check conventional path fallback
         expected_path = self.models_dir / model_name
-        if expected_path.exists() and any(expected_path.iterdir()):
-            return True
-
-        return False
+        return bool(expected_path.exists() and any(expected_path.iterdir()))
 
     def register_model(self, entry: ModelManifestEntry) -> None:
         """Registers or updates a model entry in the manifest."""

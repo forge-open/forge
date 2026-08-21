@@ -1,9 +1,9 @@
-from typing import Any, List
+from typing import Any
 
 FORGE_VERSION = "0.2.0"
 
 
-def handle_version(shell: Any, args: List[str]) -> bool:
+def handle_version(shell: Any, args: list[str]) -> bool:
     """Displays current Forge CLI version."""
     try:
         shell.console.print(f"[bold cyan]Forge AI Coding CLI[/bold cyan] [bold white]v{FORGE_VERSION}[/bold white]\n")

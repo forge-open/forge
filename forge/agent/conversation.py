@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from __future__ import annotations
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are Forge, an intelligent, helpful AI coding assistant. "
@@ -9,9 +9,9 @@ DEFAULT_SYSTEM_PROMPT = (
 class ConversationManager:
     """Manages multi-turn conversation history for REPL sessions."""
 
-    def __init__(self, system_prompt: Optional[str] = None):
+    def __init__(self, system_prompt: str | None = None):
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
-        self.messages: List[Dict[str, str]] = []
+        self.messages: list[dict[str, str]] = []
         self.reset()
 
     def reset(self) -> None:
@@ -26,7 +26,7 @@ class ConversationManager:
         """Appends an assistant response to history."""
         self.messages.append({"role": "assistant", "content": content})
 
-    def get_messages(self) -> List[Dict[str, str]]:
+    def get_messages(self) -> list[dict[str, str]]:
         """Returns full list of conversation messages."""
         return list(self.messages)
 

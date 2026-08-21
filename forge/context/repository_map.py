@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+
 
 class RepositoryMap:
     """Generates condensed repository map representation."""
@@ -8,11 +8,11 @@ class RepositoryMap:
         self.root_dir = Path(root_dir)
 
     def build_map(self, max_depth: int = 3) -> str:
-        lines: List[str] = ["Repository Structure:"]
+        lines: list[str] = ["Repository Structure:"]
         self._traverse(self.root_dir, 0, max_depth, lines)
         return "\n".join(lines)
 
-    def _traverse(self, current: Path, depth: int, max_depth: int, lines: List[str]) -> None:
+    def _traverse(self, current: Path, depth: int, max_depth: int, lines: list[str]) -> None:
         if depth > max_depth:
             return
         

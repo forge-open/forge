@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Callable, List, Dict, Any, Optional
+from typing import Any, Callable
 
 
 @dataclass
@@ -7,8 +9,8 @@ class SlashCommand:
     """Dataclass representing a registered Forge CLI slash command."""
     name: str
     description: str
-    handler: Callable[[Any, List[str]], Any]
-    aliases: List[str] = field(default_factory=list)
+    handler: Callable[[Any, list[str]], Any]
+    aliases: list[str] = field(default_factory=list)
     accepts_args: bool = False
 
 
@@ -16,8 +18,8 @@ class SlashCommandRegistry:
     """Registry managing command lookup, aliases, autocomplete list, and execution."""
 
     def __init__(self) -> None:
-        self._commands: Dict[str, SlashCommand] = {}
-        self._aliases: Dict[str, str] = {}
+        self._commands: dict[str, SlashCommand] = {}
+        self._aliases: dict[str, str] = {}
 
     def register(self, command: SlashCommand) -> None:
         """Registers a new slash command and its aliases."""
@@ -27,7 +29,7 @@ class SlashCommandRegistry:
             alias_clean = alias.lower().lstrip("/")
             self._aliases[alias_clean] = primary_name
 
-    def get(self, name: str) -> Optional[SlashCommand]:
+    def get(self, name: str) -> SlashCommand | None:
         """Looks up a command by name or alias."""
         clean_name = name.lower().lstrip("/")
         if clean_name in self._commands:
@@ -36,7 +38,7 @@ class SlashCommandRegistry:
             return self._commands[self._aliases[clean_name]]
         return None
 
-    def list_commands(self) -> List[SlashCommand]:
+    def list_commands(self) -> list[SlashCommand]:
         """Returns all registered commands sorted by primary name."""
         unique_cmds = {}
         for cmd in self._commands.values():
@@ -68,15 +70,17 @@ class SlashCommandRegistry:
 
 def create_default_registry() -> SlashCommandRegistry:
     """Instantiates and registers all standard Forge CLI commands."""
-    from forge.cli.commands.help import register_help_command
-    from forge.cli.commands.status import register_status_command
-    from forge.cli.commands.model import register_model_commands
-    from forge.cli.commands.history import register_history_commands
+    from forge.cli.commands.config import register_config_command
     from forge.cli.commands.context import register_context_command
+    from forge.cli.commands.doctor import register_doctor_command
     from forge.cli.commands.files import register_files_command
     from forge.cli.commands.git import register_git_command
-    from forge.cli.commands.config import register_config_command
-    from forge.cli.commands.doctor import register_doctor_command
+    from forge.cli.commands.help import register_help_command
+    from forge.cli.commands.history import register_history_commands
+    from forge.cli.commands.init import register_init_command
+    from forge.cli.commands.memory import register_memory_command
+    from forge.cli.commands.model import register_model_commands
+    from forge.cli.commands.status import register_status_command
     from forge.cli.commands.version import register_version_command
 
     registry = SlashCommandRegistry()
@@ -91,9 +95,11 @@ def create_default_registry() -> SlashCommandRegistry:
     register_config_command(registry)
     register_doctor_command(registry)
     register_version_command(registry)
+    register_memory_command(registry)
+    register_init_command(registry)
 
     # Register exit / quit commands
-    def exit_handler(shell: Any, args: List[str]) -> bool:
+    def exit_handler(shell: Any, args: list[str]) -> bool:
         if hasattr(shell, "console"):
             shell.console.print("[yellow]Exiting Forge. Goodbye![/yellow]\n")
         else:

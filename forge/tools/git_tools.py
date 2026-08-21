@@ -1,13 +1,15 @@
 import subprocess
-from typing import Dict, Any
+from typing import Any
+
 from forge.tools.base import BaseTool
+
 
 class GitStatusTool(BaseTool):
     name = "git_status"
     description = "Get current git working tree status."
     parameters = {"type": "object", "properties": {}}
 
-    def execute(self, **kwargs) -> Dict[str, Any]:
+    def execute(self, **kwargs) -> dict[str, Any]:
         try:
             res = subprocess.run("git status --short", shell=True, capture_output=True, text=True)
             return {"status": res.stdout, "exit_code": res.returncode}
@@ -24,7 +26,7 @@ class GitDiffTool(BaseTool):
         }
     }
 
-    def execute(self, staged: bool = False, **kwargs) -> Dict[str, Any]:
+    def execute(self, staged: bool = False, **kwargs) -> dict[str, Any]:
         cmd = "git diff --staged" if staged else "git diff"
         try:
             res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -42,7 +44,7 @@ class GitLogTool(BaseTool):
         }
     }
 
-    def execute(self, max_count: int = 5, **kwargs) -> Dict[str, Any]:
+    def execute(self, max_count: int = 5, **kwargs) -> dict[str, Any]:
         cmd = f"git log -n {max_count} --oneline"
         try:
             res = subprocess.run(cmd, shell=True, capture_output=True, text=True)

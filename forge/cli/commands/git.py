@@ -1,8 +1,9 @@
-from typing import Any, List
+from typing import Any
+
 from rich.table import Table
 
 
-def handle_git(shell: Any, args: List[str]) -> bool:
+def handle_git(shell: Any, args: list[str]) -> bool:
     """Displays git repository status and recent commit information."""
     git_mgr = shell.orchestrator.git
     branch = git_mgr.get_current_branch() or "Unknown / Not a Git repository"

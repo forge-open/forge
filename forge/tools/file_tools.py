@@ -1,7 +1,8 @@
-import os
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any
+
 from forge.tools.base import BaseTool
+
 
 class ReadFileTool(BaseTool):
     name = "read_file"
@@ -14,7 +15,7 @@ class ReadFileTool(BaseTool):
         "required": ["path"]
     }
 
-    def execute(self, path: str, **kwargs) -> Dict[str, Any]:
+    def execute(self, path: str, **kwargs) -> dict[str, Any]:
         p = Path(path)
         if not p.exists() or not p.is_file():
             return {"error": f"File '{path}' does not exist or is not a file."}
@@ -36,7 +37,7 @@ class WriteFileTool(BaseTool):
         "required": ["path", "content"]
     }
 
-    def execute(self, path: str, content: str, **kwargs) -> Dict[str, Any]:
+    def execute(self, path: str, content: str, **kwargs) -> dict[str, Any]:
         p = Path(path)
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +59,7 @@ class EditFileTool(BaseTool):
         "required": ["path", "target_content", "replacement_content"]
     }
 
-    def execute(self, path: str, target_content: str, replacement_content: str, **kwargs) -> Dict[str, Any]:
+    def execute(self, path: str, target_content: str, replacement_content: str, **kwargs) -> dict[str, Any]:
         p = Path(path)
         if not p.exists():
             return {"error": f"File '{path}' does not exist."}
@@ -84,8 +85,8 @@ class SearchFilesTool(BaseTool):
         "required": ["query"]
     }
 
-    def execute(self, query: str, dir_path: str = ".", **kwargs) -> Dict[str, Any]:
-        matches: List[Dict[str, Any]] = []
+    def execute(self, query: str, dir_path: str = ".", **kwargs) -> dict[str, Any]:
+        matches: list[dict[str, Any]] = []
         root = Path(dir_path)
         if not root.exists():
             return {"error": f"Directory '{dir_path}' does not exist."}
@@ -112,7 +113,7 @@ class ListDirectoryTool(BaseTool):
         }
     }
 
-    def execute(self, path: str = ".", **kwargs) -> Dict[str, Any]:
+    def execute(self, path: str = ".", **kwargs) -> dict[str, Any]:
         p = Path(path)
         if not p.exists() or not p.is_dir():
             return {"error": f"Directory '{path}' does not exist."}

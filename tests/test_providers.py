@@ -1,12 +1,14 @@
 from unittest.mock import patch
+
 import httpx
+
 from forge.config.settings import ModelConfig
-from forge.providers.openai_provider import OpenAICompatibleProvider
 from forge.providers.base import CompletionResponse
+from forge.providers.openai_provider import OpenAICompatibleProvider
 
 
 def test_openai_provider_offline_fallback():
-    cfg = ModelConfig(name="GLM-5.2", base_url="http://localhost:9999/v1")
+    cfg = ModelConfig(name="qwen3.8-27b-fp8", base_url="http://localhost:9999/v1")
     provider = OpenAICompatibleProvider(cfg)
     messages = [{"role": "user", "content": "Hello"}]
 
@@ -17,7 +19,7 @@ def test_openai_provider_offline_fallback():
 
 
 def test_openai_provider_streaming_fallback():
-    cfg = ModelConfig(name="GLM-5.2", base_url="http://localhost:9999/v1")
+    cfg = ModelConfig(name="qwen3.8-27b-fp8", base_url="http://localhost:9999/v1")
     provider = OpenAICompatibleProvider(cfg)
     messages = [{"role": "user", "content": "Hello"}]
 

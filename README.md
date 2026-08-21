@@ -5,7 +5,7 @@ An open source AI coding agent that intelligently routes tasks across models and
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 [![Version 0.2.0](https://img.shields.io/badge/version-0.2.0-cyan.svg)](pyproject.toml)
-[![CI](https://github.com/dhruvil-codes/forge/actions/workflows/tests.yml/badge.svg)](https://github.com/dhruvil-codes/forge/actions/workflows/tests.yml)
+[![CI](https://github.com/forge-open/forge/actions/workflows/tests.yml/badge.svg)](https://github.com/forge-open/forge/actions/workflows/tests.yml)
 
 ```text
 ╭──────────────────────────────────────────────╮
@@ -132,7 +132,7 @@ forge --base-url http://localhost:11434/v1
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/dhruvil-codes/forge.git
+git clone https://github.com/forge-open/forge.git
 cd forge
 
 # 2. Install Forge CLI in editable mode

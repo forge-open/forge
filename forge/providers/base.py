@@ -1,20 +1,24 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Iterator, Generator
+from typing import Any
+
 
 @dataclass
 class ToolCall:
     id: str
     function_name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
 
 @dataclass
 class CompletionResponse:
     content: str
     role: str = "assistant"
-    tool_calls: List[ToolCall] = field(default_factory=list)
-    finish_reason: Optional[str] = None
-    raw_response: Optional[Dict[str, Any]] = None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    finish_reason: str | None = None
+    raw_response: dict[str, Any] | None = None
 
 class BaseProvider(ABC):
     """Abstract interface for LLM providers."""
@@ -22,23 +26,21 @@ class BaseProvider(ABC):
     @abstractmethod
     def generate(
         self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_tokens: int | None = None,
     ) -> CompletionResponse:
         """Synchronous chat completion."""
-        pass
 
     @abstractmethod
     def generate_stream(
         self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_tokens: int | None = None,
     ) -> Generator[str, None, None]:
         """Streaming response generator yielding chunks of text."""
-        pass

@@ -1,6 +1,6 @@
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any
+
 
 class GitManager:
     """Helper for managing git operations in the project repo."""

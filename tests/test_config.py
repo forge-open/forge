@@ -1,5 +1,4 @@
-import os
-from forge.config.settings import load_config, ForgeConfig, ModelConfig
+from forge.config.settings import ForgeConfig, load_config
 
 
 def test_load_config_defaults():
@@ -8,8 +7,7 @@ def test_load_config_defaults():
     assert cfg.base_url == "http://localhost:8000/v1"
     assert cfg.temperature == 0.1
     assert cfg.max_tokens == 2048
-    assert "glm" in cfg.models
-    assert "kimi" in cfg.models
+    assert "qwen" in cfg.models
 
 
 def test_config_env_overrides(monkeypatch):

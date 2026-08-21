@@ -1,19 +1,17 @@
 import time
 from unittest.mock import MagicMock, patch
-import pytest
 
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from forge.config.settings import load_config, ForgeConfig
 from forge.agent.orchestrator import AgentOrchestrator
 from forge.cli.shell import (
-    ForgeShell,
     ExecutionMetrics,
+    ForgeShell,
     count_tokens,
     strip_internal_reasoning,
-    format_model_display_name,
 )
+from forge.config.settings import ForgeConfig, load_config
 
 
 def test_token_counting():

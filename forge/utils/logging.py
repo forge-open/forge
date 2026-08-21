@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Optional
+
 
 def setup_logger(name: str = "forge", level: int = logging.INFO) -> logging.Logger:
     """Configures and returns a logger instance for Forge."""

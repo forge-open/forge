@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 
 class ProjectMemory:
     """Manages persistent project memory inside .forge/ directory."""
@@ -21,7 +22,7 @@ class ProjectMemory:
         except Exception:
             pass
 
-    def load_state(self) -> Dict[str, Any]:
+    def load_state(self) -> dict[str, Any]:
         if not self.state_file.exists():
             return {"tasks": [], "conventions": [], "architecture_notes": []}
         try:
@@ -30,7 +31,7 @@ class ProjectMemory:
         except Exception:
             return {"tasks": [], "conventions": [], "architecture_notes": []}
 
-    def save_state(self, state: Dict[str, Any]) -> None:
+    def save_state(self, state: dict[str, Any]) -> None:
         try:
             with open(self.state_file, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)

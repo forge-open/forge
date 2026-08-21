@@ -1,22 +1,20 @@
-import sys
-import os
+from __future__ import annotations
+
 import re
-import time
 import shutil
+import time
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Generator, List
+from typing import Any
 
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
-from rich.live import Live
 
 try:
     from prompt_toolkit import PromptSession
-    from prompt_toolkit.formatted_text import HTML
     from prompt_toolkit.completion import Completer, Completion
+    from prompt_toolkit.formatted_text import HTML
     from prompt_toolkit.styles import Style
     HAS_PROMPT_TOOLKIT = True
 except ImportError:
@@ -118,7 +116,7 @@ class ForgeShell:
         self.orchestrator = orchestrator
         self.console = console
         self.registry = create_default_registry()
-        self.last_metrics: Optional[ExecutionMetrics] = None
+        self.last_metrics: ExecutionMetrics | None = None
         self.session = None
 
         if HAS_PROMPT_TOOLKIT:
@@ -251,10 +249,10 @@ class ForgeShell:
 
         return user_text.strip()
 
-    def _stream_response(self, prompt: str, use_history: bool = True) -> Dict[str, Any]:
+    def _stream_response(self, prompt: str, use_history: bool = True) -> dict[str, Any]:
         """Streams model output cleanly inside a Rich response panel with performance tracking."""
         start_time = time.perf_counter()
-        ttft: Optional[float] = None
+        ttft: float | None = None
         accumulated_chunks = []
 
         # 1. Show non-blocking thinking indicator before first token arrives

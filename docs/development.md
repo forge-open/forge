@@ -8,7 +8,7 @@ This guide explains how to set up your environment, add new CLI commands, implem
 
 ```bash
 # Clone the repository
-git clone https://github.com/dhruvil-codes/forge.git
+git clone https://github.com/forge-open/forge.git
 cd forge
 
 # Create virtual environment

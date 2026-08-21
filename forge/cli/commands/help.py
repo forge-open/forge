@@ -1,8 +1,9 @@
-from typing import Any, List
+from typing import Any
+
 from rich.table import Table
 
 
-def handle_help(shell: Any, args: List[str]) -> bool:
+def handle_help(shell: Any, args: list[str]) -> bool:
     """Renders formatted table of all registered slash commands."""
     try:
         table = Table(title="Forge Commands", show_header=True, header_style="bold magenta")
