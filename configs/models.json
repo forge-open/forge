@@ -1,0 +1,22 @@
+{
+  "GLM-5.2": {
+    "name": "GLM-5.2",
+    "repository": "THUDM/glm-5.2-community-quant",
+    "revision": "main",
+    "quantization": "AWQ-INT4",
+    "size": "45GB",
+    "local_path": "/content/drive/MyDrive/AI Model Vault/models/GLM-5.2",
+    "engine": "vLLM",
+    "status": "pending_verification"
+  },
+  "Kimi-K2.5": {
+    "name": "Kimi-K2.5",
+    "repository": "MoonshotAI/kimi-k2.5-community-quant",
+    "revision": "main",
+    "quantization": "AWQ-INT4",
+    "size": "40GB",
+    "local_path": "/content/drive/MyDrive/AI Model Vault/models/Kimi-K2.5",
+    "engine": "vLLM",
+    "status": "pending_verification"
+  }
+}

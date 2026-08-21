@@ -1,0 +1,24 @@
+# Default Forge Configuration
+primary_model: glm
+secondary_model: kimi
+safe_mode: true
+drive_vault_path: /content/drive/MyDrive/AI Model Vault
+
+models:
+  glm:
+    name: GLM-5.2
+    provider: openai-compatible
+    base_url: http://localhost:8000/v1
+    api_key: local-key
+    temperature: 0.2
+    top_p: 0.95
+    max_tokens: 4096
+
+  kimi:
+    name: Kimi-K2.5
+    provider: openai-compatible
+    base_url: http://localhost:8001/v1
+    api_key: local-key
+    temperature: 0.3
+    top_p: 0.95
+    max_tokens: 4096
