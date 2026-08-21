@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 KNOWN_CHECKPOINTS = {
     "GLM-5.2-Official": {

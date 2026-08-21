@@ -1,7 +1,7 @@
-import os
 import sys
-from pathlib import Path
-from forge.utils.vault import ModelVault, ModelManifestEntry
+
+from forge.utils.vault import ModelManifestEntry, ModelVault
+
 
 def download_model_interactive(
     model_name: str,

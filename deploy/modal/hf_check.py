@@ -15,6 +15,7 @@ image = (
 )
 def check_hf():
     import os
+
     from huggingface_hub import HfApi
 
     token = os.environ.get("HF_TOKEN")

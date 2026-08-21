@@ -9,9 +9,9 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
 
 @app.function(gpu="any", image=image)
 def check_gpu():
-    import torch
-    import psutil
     import platform
+
+    import torch
 
     print("\n" + "=" * 50)
     print("      Modal Remote GPU Test - Forge Harness")

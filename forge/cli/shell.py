@@ -208,22 +208,22 @@ class ForgeShell:
 
         user_text = ""
         try:
-            if HAS_PROMPT_TOOLKIT:
-                if self.session is None:
-                    try:
-                        style = Style.from_dict({
-                            'completion-menu.completion': 'bg:#1e1e2e #cdd6f4',
-                            'completion-menu.completion.current': 'bg:#89b4fa #11111b bold',
-                            'completion-menu.meta.completion': 'bg:#181825 #a6adc8',
-                            'completion-menu.meta.completion.current': 'bg:#89b4fa #11111b bold',
-                        })
-                        self.session = PromptSession(
-                            completer=SlashCommandCompleter(self.registry),
-                            complete_while_typing=True,
-                            style=style,
-                        )
-                    except Exception:
-                        self.session = None
+            if HAS_PROMPT_TOOLKIT and self.session is None and not getattr(self, "_disable_prompt_session", False):
+                try:
+                    style = Style.from_dict({
+                        'completion-menu.completion': 'bg:#1e1e2e #cdd6f4',
+                        'completion-menu.completion.current': 'bg:#89b4fa #11111b bold',
+                        'completion-menu.meta.completion': 'bg:#181825 #a6adc8',
+                        'completion-menu.meta.completion.current': 'bg:#89b4fa #11111b bold',
+                    })
+                    self.session = PromptSession(
+                        completer=SlashCommandCompleter(self.registry),
+                        complete_while_typing=True,
+                        style=style,
+                    )
+                except Exception:
+                    self.session = None
+                    self._disable_prompt_session = True
 
             if self.session is not None:
                 try:

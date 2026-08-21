@@ -1,7 +1,7 @@
-import sys
-import subprocess
 import argparse
-from pathlib import Path
+import subprocess
+import sys
+
 
 def start_inference_server(
     model_path: str,

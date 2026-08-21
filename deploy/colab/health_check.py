@@ -1,8 +1,9 @@
-import sys
 import json
+import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
+
 
 def check_server_health(base_url: str = "http://localhost:8000/v1") -> bool:
     models_endpoint = f"{base_url.rstrip('/')}/models"

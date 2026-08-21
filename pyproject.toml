@@ -38,11 +38,12 @@ forge = "forge.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["forge*"]
+include = ["forge*", "deploy*"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
 addopts = "-ra -q"
+pythonpath = ["."]
 testpaths = [
     "tests",
 ]

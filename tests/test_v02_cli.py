@@ -59,9 +59,10 @@ def test_bordered_prompt_and_input_handling():
 
     # Test input prompt box header/footer rendering with mocked input
     with patch("builtins.input", return_value="test prompt"):
-        with patch.object(shell, "session", None):
-            user_input = shell.get_user_input()
-            assert user_input == "test prompt"
+        shell.session = None
+        shell._disable_prompt_session = True
+        user_input = shell.get_user_input()
+        assert user_input == "test prompt"
 
 
 def test_thinking_state_and_ttft_measurement():

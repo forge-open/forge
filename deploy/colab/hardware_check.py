@@ -1,8 +1,8 @@
-import sys
-import shutil
 import platform
+import shutil
 import subprocess
-from typing import Dict, Any
+from typing import Any, Dict
+
 
 def get_hardware_info() -> Dict[str, Any]:
     info: Dict[str, Any] = {
@@ -80,11 +80,11 @@ def print_hardware_report() -> Dict[str, Any]:
     if vram == 0:
         print("❌ NO GPU DETECTED. Local GPU inference is unavailable. CPU offloading is extremely slow.")
     elif vram < 16:
-        print(f"⚠️ LOW VRAM ({vram} GB). Cannot fit standard 70B+ or 753B GLM 5.2 models. High quantization required.")
+        print(f"⚠️ LOW VRAM ({vram} GB). Cannot fit heavy 27B+ models natively without offloading.")
     elif vram < 40:
-        print(f"⚡ MEDIUM VRAM ({vram} GB - e.g. T4/V100/L4). Can fit 4-bit quantized ~30B-70B models or offloaded quants.")
+        print(f"⚡ MEDIUM VRAM ({vram} GB - e.g. T4/V100/L4). Can fit 4-bit quantized ~30B models or offloaded quants.")
     else:
-        print(f"🚀 HIGH VRAM ({vram} GB - e.g. A100/H100). Suitable for quantized GLM 5.2 / Kimi K2.5 community checkpoints.")
+        print(f"🚀 HIGH VRAM ({vram} GB - e.g. A100/H100/L40S). Suitable for Qwen3 27B FP8 models and larger checkpoints.")
 
     print("=" * 50 + "\n")
     return hw
