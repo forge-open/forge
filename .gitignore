@@ -52,7 +52,8 @@ benchmarks/results/*.json
 
 # Models and Vault Cache
 AI Model Vault/
-models/
+/models/
+!forge/models/
 *.bin
 *.safetensors
 *.gguf
