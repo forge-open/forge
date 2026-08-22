@@ -65,6 +65,19 @@ class ModelRegistry:
             description="Compact model suited for fast explanations and lightweight questions."
         ))
 
+        self.register(ModelSpec(
+            name="Gemma 3 4B IT QAT",
+            model_id="gemma3:4b-it-qat",
+            provider="ollama",
+            capabilities=["code_generation", "refactoring", "debugging", "code_explanation", "tool_use"],
+            coding_capability=8,
+            reasoning_capability=8,
+            speed="fast",
+            context_size=8192,
+            availability="local",
+            description="Quantized local instruction-tuned Gemma 3 4B model running on Ollama."
+        ))
+
     def register(self, spec: ModelSpec) -> None:
         """Registers a new ModelSpec by its model_id and clean lowercase keys."""
         key = spec.model_id.lower()
@@ -84,7 +97,19 @@ class ModelRegistry:
             if clean_key in key or clean_key in spec.name.lower():
                 return spec
 
-        return None
+        # Dynamic Spec for discovered local models (e.g., custom Ollama model tags)
+        return ModelSpec(
+            name=model_id_or_key,
+            model_id=model_id_or_key,
+            provider="ollama" if ":" in model_id_or_key else "openai-compatible",
+            capabilities=["code_generation", "tool_use"],
+            coding_capability=8,
+            reasoning_capability=8,
+            speed="fast",
+            context_size=8192,
+            availability="local",
+            description=f"Discovered model {model_id_or_key}."
+        )
 
     def get_default(self) -> ModelSpec:
         """Returns the primary default model spec (Qwen3 27B FP8)."""

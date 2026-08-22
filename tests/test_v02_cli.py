@@ -120,7 +120,9 @@ def test_non_interactive_execution():
         yield "Hello world from non-interactive prompt"
 
     orchestrator.stream_task = MagicMock(side_effect=mock_stream)
+    orchestrator.remote_manager = MagicMock()
     shell = ForgeShell(orchestrator)
+    shell.remote_manager = orchestrator.remote_manager
 
     shell.run_single_prompt("Test non-interactive")
     assert shell.last_metrics is not None

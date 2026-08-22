@@ -30,6 +30,8 @@ class ModelConfig:
 @dataclass
 class ForgeConfig:
     base_url: str = "http://localhost:8000/v1"
+    ollama_base_url: str = "http://localhost:11434"
+    active_backend: str = "auto"
     model: str = ""
     temperature: float = 0.1
     max_tokens: int = 2048
@@ -152,6 +154,11 @@ def load_config(config_path: str | None = None) -> ForgeConfig:
         cfg.remote = load_remote_config(cfg.remote.__dict__)
 
     # Environment variable overrides
+    ollama_url = os.getenv("FORGE_OLLAMA_BASE_URL") or os.getenv("FORGE_LOCAL_BASE_URL")
+    if ollama_url:
+        cfg.ollama_base_url = ollama_url
+    if os.getenv("FORGE_BACKEND"):
+        cfg.active_backend = os.getenv("FORGE_BACKEND")
     if os.getenv("FORGE_PRIMARY_MODEL"):
         cfg.primary_model = os.getenv("FORGE_PRIMARY_MODEL")
     if os.getenv("FORGE_SAFE_MODE"):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 from forge.config.settings import ForgeConfig, ModelConfig
 from forge.models.registry import get_model_registry
@@ -71,8 +72,9 @@ def classify_task(prompt: str, context_files_count: int = 0) -> TaskCategory:
 class ModelRouter:
     """Intelligent task-based model router for Forge."""
 
-    def __init__(self, config: ForgeConfig):
+    def __init__(self, config: ForgeConfig, backend_manager: Any = None):
         self.config = config
+        self.backend_manager = backend_manager
         self._providers: dict[str, BaseProvider] = {}
         self.registry = get_model_registry()
         self.active_model_key: str = config.primary_model or "qwen3.8-27b-fp8"
@@ -121,7 +123,14 @@ class ModelRouter:
         )
 
     def get_provider(self, model_key: str | None = None) -> BaseProvider:
-        """Gets or creates provider for model key."""
+        """Gets or creates provider for model key or active backend."""
+        if self.backend_manager is not None:
+            active_backend = self.backend_manager.get_active_backend()
+            if active_backend and active_backend.is_available():
+                active_prov = self.backend_manager.get_active_provider()
+                if active_prov is not None:
+                    return active_prov
+
         key = model_key or self.active_model_key
         if key not in self._providers:
             model_cfg = self.config.models.get(key)
@@ -140,3 +149,4 @@ class ModelRouter:
 
     def get_secondary_provider(self) -> BaseProvider:
         return self.get_provider(self.config.secondary_model)
+

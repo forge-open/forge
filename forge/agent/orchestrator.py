@@ -10,6 +10,7 @@ from forge.config.settings import ForgeConfig
 from forge.context.context_builder import ContextBuilder
 from forge.git.git_manager import GitManager
 from forge.memory.project_memory import ProjectMemory
+from forge.providers.backend import BackendManager
 from forge.remote.manager import RemoteManager, get_remote_manager
 from forge.router.model_router import ModelRouter, RoutingDecision
 from forge.tools.base import ToolRegistry
@@ -30,8 +31,9 @@ class AgentOrchestrator:
 
     def __init__(self, config: ForgeConfig):
         self.config = config
-        self.router = ModelRouter(config)
         self.remote_manager: RemoteManager = get_remote_manager(config.remote)
+        self.backend_manager = BackendManager(config, self.remote_manager)
+        self.router = ModelRouter(config, backend_manager=self.backend_manager)
         self.registry = ToolRegistry()
         self.context_builder = ContextBuilder()
         self.memory = ProjectMemory()
@@ -57,7 +59,10 @@ class AgentOrchestrator:
         self.conversation.reset()
 
     def check_server_status(self) -> dict[str, Any]:
-        """Checks reachability and status of the primary model backend."""
+        """Checks reachability and status of the primary active model backend."""
+        active = self.backend_manager.get_active_backend()
+        if active and active.provider and hasattr(active.provider, "check_health"):
+            return active.provider.check_health()
         provider = self.router.get_provider()
         if hasattr(provider, "check_health"):
             return provider.check_health()
@@ -65,6 +70,9 @@ class AgentOrchestrator:
 
     def get_active_model_name(self) -> str:
         """Returns the detected or configured active model name/ID."""
+        active = self.backend_manager.get_active_backend()
+        if active and active.model:
+            return active.model
         provider = self.router.get_provider()
         if hasattr(provider, "detect_model"):
             return provider.detect_model()

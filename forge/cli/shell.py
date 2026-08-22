@@ -44,12 +44,38 @@ BANNER_ART = """[cyan]╭──────────────────�
 [cyan]╰──────────────────────────────────────────────╯[/cyan]"""
 
 
+def generate_banner_art(subtitle: str) -> str:
+    """Generates ASCII banner with dynamically centered subtitle."""
+    sub_text = subtitle[:42].center(42)
+    return f"""[cyan]╭──────────────────────────────────────────────╮[/cyan]
+[cyan]│                                              │[/cyan]
+[cyan]│   [bold bright_cyan]███████╗ ██████╗ ██████╗  ██████╗ ███████╗[/bold bright_cyan] │[/cyan]
+[cyan]│   [bold bright_cyan]██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝[/bold bright_cyan] │[/cyan]
+[cyan]│   [bold bright_cyan]█████╗  ██║   ██║██████╔╝██║  ███╗█████╗  [/bold bright_cyan] │[/cyan]
+[cyan]│   [bold bright_cyan]██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  [/bold bright_cyan] │[/cyan]
+[cyan]│   [bold bright_cyan]██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗[/bold bright_cyan] │[/cyan]
+[cyan]│   [bold bright_cyan]╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝[/bold bright_cyan] │[/cyan]
+[cyan]│                                              │[/cyan]
+[cyan]│        [bold yellow]⚡ AI CODING AGENT[/bold yellow]                    │[/cyan]
+[cyan]│        [bold white]{sub_text}[/bold white]      │[/cyan]
+[cyan]│                                              │[/cyan]
+[cyan]╰──────────────────────────────────────────────╯[/cyan]"""
+
+
 def format_model_display_name(model_id: str) -> str:
     """Formats model ID for clean UI display."""
     if not model_id:
+        return "Gemma 3 4B IT QAT"
+    m_clean = model_id.rstrip("/").split("/")[-1].lower()
+    if "gemma3:4b-it-qat" in m_clean or "gemma3:4b" in m_clean or "gemma3" in m_clean:
+        return "Gemma 3 4B IT QAT"
+    if "gemma-2-9b" in m_clean or "gemma" in m_clean:
+        return "Gemma 2 9B"
+    if "qwen3.8-27b-fp8" in m_clean or "qwen3.8" in m_clean:
         return "Qwen3.8 27B FP8"
-    if "qwen3.8-27b-fp8" in model_id.lower() or "qwen" in model_id.lower():
-        return "Qwen3.8 27B FP8"
+    if "qwen2.5-coder-7b" in m_clean:
+        return "Qwen2.5 Coder 7B"
+
     parts = model_id.rstrip("/").split("/")
     return parts[-1]
 
@@ -137,38 +163,72 @@ class ForgeShell:
                 self.session = None
 
     def print_banner(self) -> None:
-        """Prints startup ASCII banner."""
+        """Prints startup ASCII banner with dynamic model and backend information."""
+        active = None
+        if hasattr(self.orchestrator, "backend_manager"):
+            active = self.orchestrator.backend_manager.get_active_backend()
+
+        if active and active.is_available():
+            disp = format_model_display_name(active.model)
+            if active.id == "ollama":
+                subtitle = f"{disp} • Ollama • Local"
+            elif active.id == "lightning":
+                gpu_str = active.gpu or "L40S"
+                subtitle = f"{disp} • {gpu_str} • Lightning AI"
+            else:
+                subtitle = f"{disp} • {active.name} • {active.location}"
+        else:
+            remote_cfg = getattr(self.orchestrator.config, "remote", None)
+            gpu_str = getattr(remote_cfg, "gpu", "L40S") if remote_cfg else "L40S"
+            subtitle = f"Qwen3.8 27B FP8 • {gpu_str}"
+
         try:
-            console.print(BANNER_ART)
+            console.print(generate_banner_art(subtitle))
         except Exception:
-            print("""
-+----------------------------------------------+
-|   FORGE AI CODING AGENT                      |
-|   Qwen3.8 27B FP8  •  L40S                   |
-+----------------------------------------------+
-""")
+            print(f"\n+----------------------------------------------+\n|   FORGE AI CODING AGENT                      |\n|   {subtitle.center(42)} |\n+----------------------------------------------+\n")
         print()
 
     def print_status(self, silent_if_ok: bool = False) -> None:
         """Checks and displays server connection status and backend details."""
         health = self.orchestrator.check_server_status()
+        active = None
+        if hasattr(self.orchestrator, "backend_manager"):
+            active = self.orchestrator.backend_manager.get_active_backend()
+
         if health.get("reachable"):
-            model_id = self.orchestrator.get_active_model_name()
+            model_id = health.get("detected_model") or self.orchestrator.get_active_model_name()
             display_name = format_model_display_name(model_id)
+
+            if active and active.id == "ollama":
+                loc_str = "Ollama · Local"
+            elif active and active.id == "lightning":
+                loc_str = f"vLLM · Remote {active.gpu or 'L40S'}"
+            elif active:
+                loc_str = f"{active.name} · {active.location}"
+            else:
+                loc_str = "vLLM · Remote L40S"
+
             try:
                 console.print("[bold green]✓ Connected[/bold green]")
-                console.print(f"[bold white]{display_name}[/bold white] [dim]·[/dim] [bold white]vLLM[/bold white] [dim]·[/dim] [bold white]Remote L40S[/bold white]\n")
+                console.print(f"[bold white]{display_name}[/bold white] [dim]·[/dim] [bold white]{loc_str}[/bold white]\n")
             except Exception:
-                print(f"✓ Connected\n{display_name} · vLLM · Remote L40S\n")
+                print(f"✓ Connected\n{display_name} · {loc_str}\n")
         else:
-            url = health.get("url", "http://localhost:8000/v1/models")
-            err = health.get("error", "Unable to connect to vLLM server.")
+            url = health.get("url", "http://localhost:11434")
+            backend_name = health.get("backend") or (active.name if active else "Backend")
+            err = health.get("error", "Unable to connect to backend server.")
+            action_hint = health.get("action") or (active.action_hint if active else "")
+
             try:
-                console.print(f"[bold red]❌ Server Unreachable at {url}[/bold red]")
-                console.print(f"[yellow]Details: {err}[/yellow]")
-                console.print("[dim]Action: Please verify your SSH tunnel to Lightning AI Studio is active on port 8000.[/dim]\n")
+                console.print(f"[bold red]❌ {backend_name} Unavailable at {url}[/bold red]")
+                if err:
+                    console.print(f"[yellow]Details: {err}[/yellow]")
+                if action_hint:
+                    console.print(f"[dim]Action:\n{action_hint}[/dim]\n")
+                else:
+                    console.print("[dim]Action: Please make sure the backend server is running.[/dim]\n")
             except Exception:
-                print(f"Server Unreachable at {url}: {err}\n")
+                print(f"{backend_name} Unavailable at {url}: {err}\n")
 
     def print_help(self) -> None:
         """Displays available slash commands via registry."""
@@ -176,18 +236,33 @@ class ForgeShell:
         handle_help(self, [])
 
     def print_model_info(self) -> None:
-        """Displays current model configuration."""
+        """Displays detailed active backend and model configuration."""
+        active = None
+        if hasattr(self.orchestrator, "backend_manager"):
+            active = self.orchestrator.backend_manager.get_active_backend()
+
         model_id = self.orchestrator.get_active_model_name()
         display_name = format_model_display_name(model_id)
 
         try:
-            console.print(f"[bold cyan]Current Active Model:[/bold cyan] [bold white]{display_name}[/bold white]")
-            console.print(f"[dim]Model ID:[/dim] [yellow]{model_id}[/yellow]")
-            console.print(f"[dim]Base URL:[/dim] [white]{self.orchestrator.config.base_url}[/white]")
-            console.print(f"[dim]Temperature:[/dim] [white]{self.orchestrator.config.temperature}[/white]")
-            console.print(f"[dim]Max Tokens:[/dim] [white]{self.orchestrator.config.max_tokens}[/white]\n")
+            if active:
+                console.print(f"[bold cyan]Active Backend:[/bold cyan] [bold white]{active.name}[/bold white]")
+                if active.id == "lightning":
+                    console.print(f"[dim]Studio:[/dim]         [white]{active.location}[/white]")
+                    if active.gpu:
+                        console.print(f"[dim]GPU:[/dim]            [yellow]{active.gpu}[/yellow]")
+                else:
+                    console.print(f"[dim]Location:[/dim]       [white]{active.location}[/white]")
+                console.print(f"[dim]Endpoint:[/dim]       [white]{active.endpoint}[/white]")
+                console.print(f"[dim]Model:[/dim]          [yellow]{active.model or model_id}[/yellow]")
+                status_color = "green" if active.is_available() else "red"
+                console.print(f"[dim]Status:[/dim]         [{status_color}]{active.status.capitalize()}[/{status_color}]\n")
+            else:
+                console.print(f"[bold cyan]Current Active Model:[/bold cyan] [bold white]{display_name}[/bold white]")
+                console.print(f"[dim]Model ID:[/dim] [yellow]{model_id}[/yellow]")
+                console.print(f"[dim]Base URL:[/dim] [white]{self.orchestrator.config.base_url}[/white]\n")
         except Exception:
-            print(f"Active Model: {display_name} ({model_id})\nBase URL: {self.orchestrator.config.base_url}\n")
+            print(f"Active Backend: {active.name if active else 'LLM'}\nModel: {model_id}\n")
 
     def format_model_display_name(self, model_id: str) -> str:
         return format_model_display_name(model_id)
@@ -372,8 +447,17 @@ class ForgeShell:
     def run_single_prompt(self, prompt: str) -> None:
         """Executes a single non-interactive prompt with streaming response."""
         try:
-            if self.remote_manager:
+            if hasattr(self.orchestrator, "backend_manager"):
+                self.orchestrator.backend_manager.discover_backends()
+                active = self.orchestrator.backend_manager.get_active_backend()
+                if not active or not active.is_available():
+                    if self.remote_manager:
+                        res = self.remote_manager.ensure_remote_gpu(interactive=False, orchestrator=self.orchestrator)
+                        if res:
+                            self.orchestrator.backend_manager.select_active_backend("lightning")
+            elif self.remote_manager:
                 self.remote_manager.ensure_remote_gpu(interactive=False, orchestrator=self.orchestrator)
+
             self._stream_response(prompt, use_history=False)
         except KeyboardInterrupt:
             print("\n[Operation Cancelled]")
@@ -388,11 +472,44 @@ class ForgeShell:
         return self.registry.execute(cmd, self)
 
     def run(self) -> None:
-        """Main interactive REPL loop."""
-        self.print_banner()
-        if self.remote_manager:
-            self.remote_manager.ensure_remote_gpu(interactive=True, orchestrator=self.orchestrator)
-        self.print_status()
+        """Main interactive REPL loop with intelligent backend discovery."""
+        if hasattr(self.orchestrator, "backend_manager"):
+            discovered = self.orchestrator.backend_manager.discover_backends()
+            ollama = discovered.get("ollama")
+            vllm = discovered.get("vllm")
+            lightning = discovered.get("lightning")
+
+            if ollama and ollama.is_available():
+                self.orchestrator.backend_manager.select_active_backend("ollama")
+                self.print_banner()
+                disp_name = format_model_display_name(ollama.model)
+                try:
+                    console.print("[bold green]✓ Ollama detected[/bold green]")
+                    console.print(f"[bold green]✓ {disp_name} connected[/bold green]\n")
+                except Exception:
+                    print(f"✓ Ollama detected\n✓ {disp_name} connected\n")
+            elif vllm and vllm.is_available():
+                self.orchestrator.backend_manager.select_active_backend("vllm")
+                self.print_banner()
+                self.print_status()
+            elif lightning and lightning.is_available():
+                self.orchestrator.backend_manager.select_active_backend("lightning")
+                self.print_banner()
+                self.print_status()
+            else:
+                self.print_banner()
+                if self.remote_manager:
+                    res = self.remote_manager.ensure_remote_gpu(interactive=True, orchestrator=self.orchestrator)
+                    if res:
+                        self.orchestrator.backend_manager.select_active_backend("lightning")
+                    else:
+                        self.orchestrator.backend_manager.select_active_backend("ollama")
+                self.print_status()
+        else:
+            self.print_banner()
+            if self.remote_manager:
+                self.remote_manager.ensure_remote_gpu(interactive=True, orchestrator=self.orchestrator)
+            self.print_status()
 
         try:
             while True:

@@ -91,41 +91,80 @@ Forge acts as an agentic harness between your workspace and an inference backend
 
 ## 🖥️ Local & Remote Backend Setup
 
-### Option A: Remote vLLM (Cloud GPU / SSH Tunnel)
+Forge supports **User-Owned Local Inference** as well as Remote Cloud GPUs. **Lightning AI is completely OPTIONAL** — Forge does not require a cloud GPU and works seamlessly with local models on your own machine.
 
-If your model (e.g. `Qwen3.8 27B FP8`) is hosted on a remote cloud GPU (NVIDIA L40S 48GB):
+### Architecture Overview
 
-1. **Launch vLLM on Remote GPU**:
-   ```bash
-   python -m vllm.entrypoints.openai.api_server \
-       --model /path/to/qwen3.8-27b-fp8 \
-       --port 8000
-   ```
+```text
+                FORGE
+                  │
+             Model Router
+                  │
+        ┌─────────┴─────────┐
+        │                   │
+     Local              Remote
+        │                   │
+   ┌────┴────┐          Lightning AI
+   │         │
+ Ollama    vLLM
+   │         │
+ Docker    Docker/native
+   │
+ Gemma
+```
 
-2. **Establish SSH Tunnel**:
-   ```bash
-   ssh -L 8000:localhost:8000 user@remote-gpu-host
-   ```
+### Option A: Ollama (Docker or Native)
 
-3. **Configure Forge**:
-   Set environment variables or edit `~/.forge/config.yaml`:
-   ```yaml
-   base_url: "http://localhost:8000/v1"
-   model: "qwen3.8-27b-fp8"
-   temperature: 0.1
-   max_tokens: 2048
-   safe_mode: true
-   ```
-
-### Option B: Local GPU (Ollama / vLLM / Local Server)
+Forge automatically detects Ollama running locally at `http://localhost:11434` via `GET /api/tags` and discovers installed models (e.g. `gemma3:4b-it-qat`).
 
 ```bash
-# Ollama
-ollama run qwen2.5-coder
+# Docker + Ollama:
+docker run -d --gpus=all -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+docker exec -it ollama ollama run gemma3:4b-it-qat
 
-# Configure Forge to point to local server
-forge --base-url http://localhost:11434/v1
+# Native Ollama:
+ollama run gemma3:4b-it-qat
+
+# Simply launch Forge:
+forge
 ```
+
+### Option B: Local vLLM / OpenAI-Compatible Server
+
+```bash
+# Launch vLLM locally
+vllm serve Qwen/Qwen2.5-Coder-7B-Instruct --port 8000
+
+# Configure Forge to point to local vLLM:
+export FORGE_LOCAL_VLLM_BASE_URL=http://localhost:8000/v1
+forge
+```
+
+### Option C: Lightning AI (Remote GPU Studio)
+
+If you prefer cloud GPU compute (e.g., NVIDIA L40S 48GB), Forge orchestrates automatic studio startup, SSH tunneling, model readiness polling, and cleanup:
+
+```bash
+# Configure Lightning AI in environment or ~/.forge/config.yaml
+export FORGE_REMOTE_PROVIDER=lightning
+export FORGE_REMOTE_STUDIO=forge-qwen
+export FORGE_REMOTE_GPU="NVIDIA L40S 48 GB"
+forge
+```
+
+---
+
+## ⚙️ Configuration Reference
+
+| Environment Variable | Default Value | Description |
+|----------------------|---------------|-------------|
+| `FORGE_OLLAMA_BASE_URL` | `http://localhost:11434` | Base URL for Ollama local backend |
+| `FORGE_LOCAL_BASE_URL` | `http://localhost:11434` | Fallback base URL for generic local backend |
+| `FORGE_LOCAL_VLLM_BASE_URL` | `http://localhost:8000/v1` | Base URL for local vLLM server |
+| `FORGE_BASE_URL` | `http://localhost:8000/v1` | Default endpoint URL |
+| `FORGE_BACKEND` | `auto` | Preferred backend selection (`auto`, `ollama`, `vllm`, `lightning`) |
+| `FORGE_MODEL` | (auto-detected) | Specific model ID override |
+| `FORGE_REMOTE_PROVIDER` | `lightning` | Cloud GPU provider |
 
 ---
 

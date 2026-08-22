@@ -165,6 +165,8 @@ class RemoteManager:
                 self.console.print("[yellow]Switching to local backend...[/yellow]\n")
             except Exception:
                 print("Switching to local backend...\n")
+            if orchestrator and hasattr(orchestrator, "backend_manager"):
+                orchestrator.backend_manager.select_active_backend("ollama")
             return False
         if choice == "cancel":
             try:
