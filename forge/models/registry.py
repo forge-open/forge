@@ -112,8 +112,21 @@ class ModelRegistry:
         )
 
     def get_default(self) -> ModelSpec:
-        """Returns the primary default model spec (Qwen3 27B FP8)."""
-        return self._registry.get("qwen3.8-27b-fp8") or list(self._registry.values())[0]
+        """Returns default model spec dynamically from registry."""
+        if self._registry:
+            return list(self._registry.values())[0]
+        return ModelSpec(
+            name="Model",
+            model_id="default",
+            provider="openai-compatible",
+            capabilities=["code_generation", "tool_use"],
+            coding_capability=8,
+            reasoning_capability=8,
+            speed="fast",
+            context_size=8192,
+            availability="local",
+            description="Default dynamic model specification."
+        )
 
     def list_models(self) -> List[ModelSpec]:
         """Returns all registered ModelSpec objects."""

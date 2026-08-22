@@ -28,7 +28,7 @@ def test_ollama_detection(mock_config):
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
         "models": [
-            {"name": "gemma3:4b-it-qat", "model": "gemma3:4b-it-qat"}
+            {"name": "deepseek-r1:14b", "model": "deepseek-r1:14b"}
         ]
     }
 
@@ -37,25 +37,29 @@ def test_ollama_detection(mock_config):
         assert health["reachable"] is True
         assert health["status"] == "connected"
         assert health["provider"] == "ollama"
+        assert health["detected_model"] == "deepseek-r1:14b"
 
 
-def test_ollama_model_discovery(mock_config):
+def test_ollama_multi_model_discovery(mock_config):
     provider = OllamaProvider(base_url="http://localhost:11434")
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
         "models": [
-            {"name": "gemma3:4b-it-qat"},
-            {"name": "qwen2.5:7b"}
+            {"name": "qwen3:14b"},
+            {"name": "llama3.1:8b"},
+            {"name": "deepseek-r1:14b"}
         ]
     }
 
     with patch("httpx.Client.get", return_value=mock_resp):
         health = provider.check_health()
-        assert "gemma3:4b-it-qat" in health["models"]
-        assert "qwen2.5:7b" in health["models"]
-        assert provider.detect_model() == "gemma3:4b-it-qat"
+        assert len(health["models"]) == 3
+        assert "qwen3:14b" in health["models"]
+        assert "llama3.1:8b" in health["models"]
+        assert "deepseek-r1:14b" in health["models"]
+        assert provider.detect_model() == "qwen3:14b"
 
 
 def test_ollama_connection_failure():
@@ -92,12 +96,12 @@ def test_ollama_empty_model_list():
 
 
 def test_ollama_generation():
-    provider = OllamaProvider(base_url="http://localhost:11434", model_name="gemma3:4b-it-qat")
+    provider = OllamaProvider(base_url="http://localhost:11434", model_name="llama3.1:8b")
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
-        "model": "gemma3:4b-it-qat",
+        "model": "llama3.1:8b",
         "message": {"role": "assistant", "content": "def reverse(s): return s[::-1]"},
         "done": True
     }
@@ -114,7 +118,7 @@ def test_local_backend_selection(mock_config):
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
-        "models": [{"name": "gemma3:4b-it-qat"}]
+        "models": [{"name": "deepseek-r1:14b"}, {"name": "llama3.1:8b"}]
     }
 
     with patch("httpx.Client.get", return_value=mock_resp):
@@ -122,7 +126,8 @@ def test_local_backend_selection(mock_config):
         selected = bm.select_active_backend("ollama")
         assert selected is not None
         assert selected.id == "ollama"
-        assert selected.model == "gemma3:4b-it-qat"
+        assert selected.model == "deepseek-r1:14b"
+        assert len(selected.discovered_models) == 2
         assert selected.is_available() is True
 
 
@@ -132,17 +137,18 @@ def test_lightning_backend_selection(mock_config):
         id="lightning",
         name="Lightning AI",
         backend_type="remote",
-        location="forge-qwen",
+        location="forge-studio",
         endpoint="http://localhost:8000/v1",
-        model="Qwen3.8 27B FP8",
+        model="custom-model-70b",
         status="connected",
-        gpu="NVIDIA L40S 48 GB"
+        gpu="NVIDIA H100 80 GB"
     )
 
     selected = bm.select_active_backend("lightning")
     assert selected is not None
     assert selected.id == "lightning"
     assert selected.name == "Lightning AI"
+    assert selected.model == "custom-model-70b"
 
 
 def test_backend_switching(mock_config):
@@ -153,16 +159,16 @@ def test_backend_switching(mock_config):
         backend_type="local",
         location="Local",
         endpoint="http://localhost:11434",
-        model="gemma3:4b-it-qat",
+        model="qwen3:14b",
         status="connected"
     )
     bm.backends["lightning"] = BackendInfo(
         id="lightning",
         name="Lightning AI",
         backend_type="remote",
-        location="forge-qwen",
+        location="forge-studio",
         endpoint="http://localhost:8000/v1",
-        model="Qwen3.8 27B FP8",
+        model="custom-model-70b",
         status="connected"
     )
 
@@ -174,15 +180,14 @@ def test_backend_switching(mock_config):
 
 
 def test_dynamic_model_display():
-    assert format_model_display_name("gemma3:4b-it-qat") == "Gemma 3 4B IT QAT"
-    assert format_model_display_name("qwen3.8-27b-fp8") == "Qwen3.8 27B FP8"
+    assert format_model_display_name("gemma3:4b-it-qat") == "Gemma3 4B IT QAT"
+    assert format_model_display_name("qwen3:14b") == "Qwen3 14B"
+    assert format_model_display_name("llama3.1:8b") == "Llama3.1 8B"
+    assert format_model_display_name("deepseek-r1:14b") == "Deepseek R1 14B"
 
-    banner_ollama = generate_banner_art("Gemma 3 4B IT QAT • Ollama • Local")
-    assert "Gemma 3 4B IT QAT" in banner_ollama
+    banner_ollama = generate_banner_art("Deepseek R1 14B • Ollama • Local")
+    assert "Deepseek R1 14B" in banner_ollama
     assert "Ollama" in banner_ollama
-
-    banner_lightning = generate_banner_art("Qwen3.8 27B FP8 • L40S • Lightning AI")
-    assert "Lightning AI" in banner_lightning
 
 
 def test_model_command(mock_config):
@@ -191,7 +196,9 @@ def test_model_command(mock_config):
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.json.return_value = {"models": [{"name": "gemma3:4b-it-qat"}]}
+    mock_resp.json.return_value = {
+        "models": [{"name": "qwen3:14b"}, {"name": "deepseek-r1:14b"}]
+    }
 
     with patch("httpx.Client.get", return_value=mock_resp):
         orchestrator.backend_manager.discover_backends()
@@ -210,7 +217,9 @@ def test_backends_command(mock_config):
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.json.return_value = {"models": [{"name": "gemma3:4b-it-qat"}]}
+    mock_resp.json.return_value = {
+        "models": [{"name": "qwen3:14b"}]
+    }
 
     with patch("httpx.Client.get", return_value=mock_resp):
         res = handle_backends(shell, [])

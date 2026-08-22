@@ -7,7 +7,7 @@ def test_load_config_defaults():
     assert cfg.base_url == "http://localhost:8000/v1"
     assert cfg.temperature == 0.1
     assert cfg.max_tokens == 2048
-    assert "qwen" in cfg.models
+    assert isinstance(cfg.models, dict)
 
 
 def test_config_env_overrides(monkeypatch):

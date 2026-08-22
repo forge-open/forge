@@ -42,8 +42,8 @@ class ForgeConfig:
         "such as 'We need answer the user...', 'Need produce final answer...', or 'Need think through...'. "
         "Never expose internal thoughts or meta commentary."
     )
-    primary_model: str = "qwen3.8-27b-fp8"
-    secondary_model: str = "qwen2.5-coder-7b"
+    primary_model: str = ""
+    secondary_model: str = ""
     safe_mode: bool = True
     drive_vault_path: str = "/content/drive/MyDrive/AI Model Vault"
     models: dict[str, ModelConfig] = field(default_factory=dict)
@@ -53,7 +53,7 @@ class ForgeConfig:
         return self.models.get(
             self.primary_model,
             ModelConfig(
-                name=self.model or "qwen3.8-27b-fp8",
+                name=self.model or "",
                 base_url=self.base_url,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
@@ -63,7 +63,7 @@ class ForgeConfig:
     def get_secondary_model(self) -> ModelConfig:
         return self.models.get(
             self.secondary_model,
-            ModelConfig(name="qwen2.5-coder-7b", base_url=self.base_url),
+            ModelConfig(name=self.secondary_model or "", base_url=self.base_url),
         )
 
 
@@ -89,15 +89,15 @@ def load_config(config_path: str | None = None) -> ForgeConfig:
         max_tokens=max_tokens,
     )
 
-    # Initialize default model entry
-    cfg.models["qwen"] = ModelConfig(
-        name=model or "Qwen3.8 27B FP8",
-        provider="openai-compatible",
-        base_url=base_url,
-        api_key=os.getenv("FORGE_API_KEY") or "local-key",
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    if model:
+        cfg.models[model] = ModelConfig(
+            name=model,
+            provider="openai-compatible",
+            base_url=base_url,
+            api_key=os.getenv("FORGE_API_KEY") or "local-key",
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     # Check potential config locations
     paths_to_check = []

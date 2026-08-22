@@ -12,7 +12,7 @@ def handle_config(shell: Any, args: list[str]) -> bool:
         table.add_column("Value", style="cyan")
 
         table.add_row("Base URL", cfg.base_url)
-        table.add_row("Model Key", cfg.model or "Default (Qwen3.8 27B FP8)")
+        table.add_row("Model Key", cfg.model or "Auto-detected")
         table.add_row("Temperature", str(cfg.temperature))
         table.add_row("Max Tokens", str(cfg.max_tokens))
         table.add_row("Safe Mode", "Enabled" if cfg.safe_mode else "Disabled")

@@ -31,7 +31,7 @@ def handle_remote(shell: Any, args: list[str]) -> bool:
             grid.add_row("GPU:", f"[yellow]{status.gpu_type}[/yellow]")
             status_style = "bold green" if status.status in ("connected", "running") else "bold red"
             grid.add_row("Status:", f"[{status_style}]{status.status.capitalize()}[/{status_style}]")
-            grid.add_row("Model:", f"[bright_white]{status.model_name or 'Qwen3.8 27B FP8'}[/bright_white]")
+            grid.add_row("Model:", f"[bright_white]{status.model_name or 'Remote Studio Model'}[/bright_white]")
             grid.add_row("Session Duration:", f"[cyan]{dur_str}[/cyan]")
             grid.add_row("Started By Forge:", f"[white]{'Yes' if status.started_by_forge else 'No'}[/white]")
 

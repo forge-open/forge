@@ -81,19 +81,20 @@ class RemoteManager:
                     data = resp.json()
                     models = data.get("data", [])
                     if models and isinstance(models[0], dict):
-                        return models[0].get("id", "Qwen3.8 27B FP8")
+                        return models[0].get("id", "")
         except Exception:
             pass
-        return "Qwen3.8 27B FP8"
+        return self._connected_model or ""
 
     def render_startup_prompt(self) -> str:
         """Displays interactive Rich box prompt when remote GPU is not running."""
+        model_name = self.detect_remote_model() or "Remote Studio Model"
         prompt_panel = Panel(
             "[bold white]Forge needs the remote GPU to continue.[/bold white]\n\n"
             f"[dim]Provider:[/dim] [cyan]{self.config.provider.capitalize()} AI[/cyan]\n"
             f"[dim]Studio:[/dim]   [white]{self.config.studio}[/white]\n"
             f"[dim]GPU:[/dim]      [yellow]{self.config.gpu}[/yellow]\n"
-            f"[dim]Model:[/dim]    [bright_white]Qwen3.8 27B FP8[/bright_white]\n\n"
+            f"[dim]Model:[/dim]    [bright_white]{model_name}[/bright_white]\n\n"
             "[bold green][ Enter ][/bold green] Start remote GPU\n"
             "[bold yellow][ L ][/bold yellow]     Use local backend\n"
             "[bold red][ C ][/bold red]     Cancel",

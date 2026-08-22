@@ -71,7 +71,7 @@ class OpenAICompatibleProvider(BaseProvider):
         health = self.check_health()
         if health.get("reachable") and health.get("detected_model"):
             return health["detected_model"]
-        return "qwen3.8-27b-fp8"
+        return ""
 
     def _resolve_model_name(self) -> str:
         if self.config.name:

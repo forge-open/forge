@@ -63,21 +63,23 @@ def generate_banner_art(subtitle: str) -> str:
 
 
 def format_model_display_name(model_id: str) -> str:
-    """Formats model ID for clean UI display."""
+    """Dynamically formats any model ID for clean UI display without hardcoded model strings."""
     if not model_id:
-        return "Gemma 3 4B IT QAT"
-    m_clean = model_id.rstrip("/").split("/")[-1].lower()
-    if "gemma3:4b-it-qat" in m_clean or "gemma3:4b" in m_clean or "gemma3" in m_clean:
-        return "Gemma 3 4B IT QAT"
-    if "gemma-2-9b" in m_clean or "gemma" in m_clean:
-        return "Gemma 2 9B"
-    if "qwen3.8-27b-fp8" in m_clean or "qwen3.8" in m_clean:
-        return "Qwen3.8 27B FP8"
-    if "qwen2.5-coder-7b" in m_clean:
-        return "Qwen2.5 Coder 7B"
-
-    parts = model_id.rstrip("/").split("/")
-    return parts[-1]
+        return "Model"
+    clean_id = model_id.rstrip("/").split("/")[-1]
+    tokens = clean_id.replace(":", " ").replace("-", " ").replace("_", " ").split()
+    formatted = []
+    for token in tokens:
+        token_upper = token.upper()
+        if token_upper in ("IT", "QAT", "FP8", "FP16", "BF16", "AWQ", "GPTQ", "AI", "LLM", "R1", "V1", "V2", "V3"):
+            formatted.append(token_upper)
+        elif token_upper.endswith("B") and token_upper[:-1].replace(".", "").isdigit():
+            formatted.append(token_upper)
+        elif any(c.isupper() for c in token):
+            formatted.append(token)
+        else:
+            formatted.append(token.capitalize())
+    return " ".join(formatted) if formatted else clean_id
 
 
 def count_tokens(text: str) -> int:
@@ -168,19 +170,19 @@ class ForgeShell:
         if hasattr(self.orchestrator, "backend_manager"):
             active = self.orchestrator.backend_manager.get_active_backend()
 
-        if active and active.is_available():
+        if active and active.is_available() and active.model:
             disp = format_model_display_name(active.model)
             if active.id == "ollama":
                 subtitle = f"{disp} • Ollama • Local"
             elif active.id == "lightning":
-                gpu_str = active.gpu or "L40S"
+                gpu_str = active.gpu or "Remote GPU"
                 subtitle = f"{disp} • {gpu_str} • Lightning AI"
             else:
                 subtitle = f"{disp} • {active.name} • {active.location}"
         else:
             remote_cfg = getattr(self.orchestrator.config, "remote", None)
-            gpu_str = getattr(remote_cfg, "gpu", "L40S") if remote_cfg else "L40S"
-            subtitle = f"Qwen3.8 27B FP8 • {gpu_str}"
+            provider_name = getattr(remote_cfg, "provider", "Lightning").capitalize() if remote_cfg else "AI"
+            subtitle = f"AI Coding Agent • {provider_name}"
 
         try:
             console.print(generate_banner_art(subtitle))
@@ -202,11 +204,12 @@ class ForgeShell:
             if active and active.id == "ollama":
                 loc_str = "Ollama · Local"
             elif active and active.id == "lightning":
-                loc_str = f"vLLM · Remote {active.gpu or 'L40S'}"
+                gpu_str = active.gpu or "Remote GPU"
+                loc_str = f"vLLM · Remote {gpu_str}"
             elif active:
                 loc_str = f"{active.name} · {active.location}"
             else:
-                loc_str = "vLLM · Remote L40S"
+                loc_str = "Inference Server"
 
             try:
                 console.print("[bold green]✓ Connected[/bold green]")

@@ -77,7 +77,7 @@ class ModelRouter:
         self.backend_manager = backend_manager
         self._providers: dict[str, BaseProvider] = {}
         self.registry = get_model_registry()
-        self.active_model_key: str = config.primary_model or "qwen3.8-27b-fp8"
+        self.active_model_key: str = config.primary_model or ""
 
     def set_active_model(self, model_key: str) -> None:
         """Sets active model key explicitly."""
@@ -91,18 +91,27 @@ class ModelRouter:
     def route_task(self, prompt: str, context_files_count: int = 0) -> RoutingDecision:
         """Intelligently routes a user task to the optimal available model with transparent reasoning."""
         category = classify_task(prompt, context_files_count)
+        
+        # Check active backend for dynamic model discovery
+        if self.backend_manager is not None:
+            active_backend = self.backend_manager.get_active_backend()
+            if active_backend and active_backend.model:
+                self.active_model_key = active_backend.model
+
         active_spec = self.registry.get(self.active_model_key) or self.registry.get_default()
 
-        # If user explicitly configured an active model or if task demands primary model
         selected_spec = active_spec
-        reasoning = f"Task categorized as '{category.value}'. Selected '{selected_spec.name}' for robust performance."
+        reasoning = f"Task categorized as '{category.value}'. Selected '{selected_spec.name}' for execution."
 
-        # If small task and a fast small model is explicitly registered and available in config
-        if category in (TaskCategory.SMALL_CODING_TASK, TaskCategory.CODE_EXPLANATION, TaskCategory.SIMPLE_QUESTION):
-            small_spec = self.registry.get("gemma-2-9b") or self.registry.get("qwen2.5-coder-7b")
-            if small_spec and small_spec.model_id in self.config.models:
-                selected_spec = small_spec
-                reasoning = f"Task categorized as lightweight '{category.value}'. Selected fast model '{selected_spec.name}'."
+        # If lightweight task and backend has multiple discovered models, can utilize dynamic choice
+        if self.backend_manager is not None:
+            active_backend = self.backend_manager.get_active_backend()
+            if active_backend and len(active_backend.discovered_models) > 1 and category in (TaskCategory.SMALL_CODING_TASK, TaskCategory.CODE_EXPLANATION, TaskCategory.SIMPLE_QUESTION):
+                alt_model_id = active_backend.discovered_models[-1]
+                alt_spec = self.registry.get(alt_model_id)
+                if alt_spec:
+                    selected_spec = alt_spec
+                    reasoning = f"Task categorized as lightweight '{category.value}'. Selected secondary discovered model '{selected_spec.name}'."
 
         provider_cfg = self.config.models.get(
             selected_spec.model_id,
