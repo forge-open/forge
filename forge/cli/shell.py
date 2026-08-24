@@ -44,7 +44,7 @@ BANNER_ART = """[cyan]╭──────────────────�
 [cyan]╰──────────────────────────────────────────────╯[/cyan]"""
 
 
-def generate_banner_art(subtitle: str) -> str:
+def _legacy_banner_art(subtitle: str) -> str:
     """Generates ASCII banner with dynamically centered subtitle."""
     sub_text = subtitle[:42].center(42)
     return f"""[cyan]╭──────────────────────────────────────────────╮[/cyan]
@@ -60,6 +60,19 @@ def generate_banner_art(subtitle: str) -> str:
 [cyan]│        [bold white]{sub_text}[/bold white]      │[/cyan]
 [cyan]│                                              │[/cyan]
 [cyan]╰──────────────────────────────────────────────╯[/cyan]"""
+
+
+# The original banner used box-drawing characters that were already mojibake in
+# the source tree. Keep the public helper names, but render an ASCII-safe UI.
+BANNER_ART = """[cyan]+----------------------------------------------+
+|          [bold bright_cyan]FORGE[/bold bright_cyan] AI CODING AGENT          |
+|        [bold white]{subtitle}[/bold white]        |
++----------------------------------------------+[/cyan]"""
+
+
+def generate_banner_art(subtitle: str) -> str:
+    sub_text = subtitle[:42].center(42)
+    return BANNER_ART.format(subtitle=sub_text)
 
 
 def format_model_display_name(model_id: str) -> str:
@@ -90,16 +103,21 @@ def count_tokens(text: str) -> int:
 
 
 def strip_internal_reasoning(text: str) -> str:
-    """Removes internal reasoning (<think>...</think>) and meta commentary/planning."""
+    """Remove model-only reasoning and protocol markers before rendering."""
     if not text:
         return ""
-    cleaned = re.sub(r"<think>.*?(?:</think>|$)", "", text, flags=re.DOTALL)
+    cleaned = text.replace("\x00", "")
+    for tag in ("think", "analysis", "reasoning"):
+        cleaned = re.sub(rf"<{tag}>.*?(?:</{tag}>|$)", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r"<\|(?:think|thinking|analysis|assistant_analysis)\|>.*?(?:<\|/(?:think|thinking|analysis|assistant_analysis)\|>|$)", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r"^\s*(?:Thought|Analysis|Reasoning|Internal notes?)\s*:\s*.*(?:\n|$)", "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
     planning_patterns = [
         r"^(?:We need answer|Need produce final answer|Need think through|Need answer).*?\n*",
         r"^(?:I need to answer|Let's think through).*?\n*",
     ]
     for pattern in planning_patterns:
         cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"^\s*<\|[^\n]+\|>\s*$", "", cleaned, flags=re.MULTILINE)
     return cleaned.strip()
 
 
@@ -231,13 +249,13 @@ class ForgeShell:
             try:
                 console.print(f"[bold red]❌ {backend_name} Unavailable at {url}[/bold red]")
                 if err:
-                    console.print(f"[yellow]Details: {err}[/yellow]")
+                    console.print("[yellow]The backend did not respond. Check that the service is running.[/yellow]")
                 if action_hint:
                     console.print(f"[dim]Action:\n{action_hint}[/dim]\n")
                 else:
                     console.print("[dim]Action: Please make sure the backend server is running.[/dim]\n")
             except Exception:
-                print(f"{backend_name} Unavailable at {url}: {err}\n")
+                print(f"{backend_name} unavailable at {url}. Check that the service is running.\n")
 
     def print_help(self) -> None:
         """Displays available slash commands via registry."""
@@ -470,8 +488,8 @@ class ForgeShell:
             self._stream_response(prompt, use_history=False)
         except KeyboardInterrupt:
             print("\n[Operation Cancelled]")
-        except Exception as e:
-            print(f"\nError executing prompt: {e}")
+        except Exception:
+            print("\nForge could not complete that prompt. Check the backend status and logs.")
         finally:
             if self.remote_manager:
                 self.remote_manager.shutdown()
@@ -550,8 +568,8 @@ class ForgeShell:
                     continue
                 except EOFError:
                     break
-                except Exception as e:
-                    print(f"\nUnexpected Error: {e}\n")
+                except Exception:
+                    print("\nForge encountered an unexpected error while handling that input.\n")
         finally:
             if self.remote_manager:
                 self.remote_manager.shutdown()

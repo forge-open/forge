@@ -25,7 +25,8 @@ def test_agent_task_execution_mocked():
         "choices": [{"message": {"role": "assistant", "content": "print('hello')"}}]
     }
 
-    with patch.object(httpx.Client, "post", return_value=mock_resp):
+    with patch.object(orchestrator.backend_manager, "get_active_backend", return_value=None), \
+        patch.object(httpx.Client, "post", return_value=mock_resp):
         result = orchestrator.run_task("Write a hello world function")
         assert "content" in result
         assert "print('hello')" in result["content"]
