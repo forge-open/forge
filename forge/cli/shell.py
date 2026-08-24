@@ -64,10 +64,7 @@ def _legacy_banner_art(subtitle: str) -> str:
 
 # The original banner used box-drawing characters that were already mojibake in
 # the source tree. Keep the public helper names, but render an ASCII-safe UI.
-BANNER_ART = """[cyan]+----------------------------------------------+
-|          [bold bright_cyan]FORGE[/bold bright_cyan] AI CODING AGENT          |
-|        [bold white]{subtitle}[/bold white]        |
-+----------------------------------------------+[/cyan]"""
+BANNER_ART = """[bold bright_cyan]FORGE[/bold bright_cyan] [dim]|[/dim] {subtitle}"""
 
 
 def generate_banner_art(subtitle: str) -> str:
@@ -128,10 +125,16 @@ class ExecutionMetrics:
     token_count: int = 0
     tokens_per_second: float = 0.0
 
-    def format_display(self) -> str:
+    def _legacy_format_display(self) -> str:
         return (
             f"⚡ {self.ttft:.3f}s TTFT · {self.total_time:.1f}s total · "
             f"{self.tokens_per_second:.1f} tok/s · {self.token_count} tokens"
+        )
+
+    def format_display(self) -> str:
+        return (
+            f"⚡ {self.ttft:.3f}s TTFT | {self.total_time:.1f}s total | "
+            f"{self.tokens_per_second:.1f} tok/s | {self.token_count} tokens"
         )
 
 
@@ -188,7 +191,7 @@ class ForgeShell:
             except Exception:
                 self.session = None
 
-    def print_banner(self) -> None:
+    def _legacy_print_banner(self) -> None:
         """Prints startup ASCII banner with dynamic model and backend information."""
         active = None
         if hasattr(self.orchestrator, "backend_manager"):
@@ -294,7 +297,7 @@ class ForgeShell:
     def format_model_display_name(self, model_id: str) -> str:
         return format_model_display_name(model_id)
 
-    def get_user_input(self) -> str:
+    def _legacy_get_user_input(self) -> str:
         """Renders bordered prompt box adapting dynamically to terminal width."""
         term_width = shutil.get_terminal_size((80, 24)).columns
         border_width = max(20, term_width - 1)
@@ -352,7 +355,7 @@ class ForgeShell:
 
         return user_text.strip()
 
-    def _stream_response(self, prompt: str, use_history: bool = True) -> dict[str, Any]:
+    def _legacy_stream_response(self, prompt: str, use_history: bool = True) -> dict[str, Any]:
         """Streams model output cleanly inside a Rich response panel with performance tracking."""
         start_time = time.perf_counter()
         ttft: float | None = None
@@ -471,11 +474,76 @@ class ForgeShell:
             "response": final_clean_text
         }
 
+    def get_user_input(self) -> str:
+        """Read a prompt without a decorative box around every turn."""
+        try:
+            if self.session is not None:
+                return self.session.prompt(HTML("<cyan>forge &gt; </cyan>")).strip()
+            return input("forge > ").strip()
+        except (KeyboardInterrupt, EOFError):
+            raise
+
+    def print_banner(self) -> None:
+        """Print one compact startup line."""
+        active = None
+        if hasattr(self.orchestrator, "backend_manager"):
+            active = self.orchestrator.backend_manager.get_active_backend()
+        if active and active.model:
+            subtitle = f"{format_model_display_name(active.model)} | {active.name} | {active.location}"
+        else:
+            subtitle = "AI coding agent"
+        try:
+            self.console.print(generate_banner_art(subtitle))
+        except Exception:
+            print(f"FORGE | {subtitle}")
+
+    def _stream_response(self, prompt: str, use_history: bool = True) -> dict[str, Any]:
+        """Stream Markdown plainly, then show one compact metrics line."""
+        start_time = time.perf_counter()
+        ttft: float | None = None
+        chunks: list[str] = []
+        status = None
+        try:
+            status = self.console.status("[dim]thinking...[/dim]", spinner="dots")
+            status.start()
+            for chunk in self.orchestrator.stream_task(prompt, use_history=use_history):
+                chunks.append(chunk)
+                if ttft is None and chunk.strip():
+                    ttft = time.perf_counter() - start_time
+                    status.stop()
+                    status = None
+        finally:
+            if status is not None:
+                status.stop()
+
+        total_time = time.perf_counter() - start_time
+        ttft = total_time if ttft is None else ttft
+        response = strip_internal_reasoning("".join(chunks))
+        if response:
+            try:
+                self.console.print(Markdown(response, code_theme="monokai"))
+            except Exception:
+                print(response)
+        token_count = count_tokens(response)
+        decode_time = max(total_time - ttft, 0.001)
+        metrics = ExecutionMetrics(
+            ttft=ttft,
+            total_time=total_time,
+            token_count=token_count,
+            tokens_per_second=token_count / decode_time if token_count else 0.0,
+        )
+        self.last_metrics = metrics
+        try:
+            self.console.print(f"[dim]{metrics.format_display()}[/dim]")
+        except Exception:
+            print(metrics.format_display())
+        return {"metrics": metrics, "response": response}
+
     def run_single_prompt(self, prompt: str) -> None:
         """Executes a single non-interactive prompt with streaming response."""
         try:
             if hasattr(self.orchestrator, "backend_manager"):
-                self.orchestrator.backend_manager.discover_backends()
+                self.orchestrator.backend_manager.discover_backends(include_remote=False)
                 active = self.orchestrator.backend_manager.get_active_backend()
                 if not active or not active.is_available():
                     if self.remote_manager:
@@ -501,7 +569,7 @@ class ForgeShell:
     def run(self) -> None:
         """Main interactive REPL loop with intelligent backend discovery."""
         if hasattr(self.orchestrator, "backend_manager"):
-            discovered = self.orchestrator.backend_manager.discover_backends()
+            discovered = self.orchestrator.backend_manager.discover_backends(include_remote=False)
             ollama = discovered.get("ollama")
             vllm = discovered.get("vllm")
             lightning = discovered.get("lightning")

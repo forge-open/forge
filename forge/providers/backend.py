@@ -42,7 +42,7 @@ class BackendManager:
         self.backends: dict[str, BackendInfo] = {}
         self._active_backend_id: str | None = None
 
-    def discover_backends(self) -> dict[str, BackendInfo]:
+    def discover_backends(self, include_remote: bool = True) -> dict[str, BackendInfo]:
         """Probes all configured local and remote backends and discovers installed models dynamically."""
         discovered: dict[str, BackendInfo] = {}
 
@@ -96,8 +96,18 @@ class BackendManager:
             os.getenv("FORGE_LOCAL_VLLM_BASE_URL")
             or getattr(self.config, "base_url", "http://localhost:8000/v1")
         )
+        explicit_vllm = (
+            os.getenv("FORGE_LOCAL_VLLM_BASE_URL")
+            or getattr(self.config, "active_backend", "auto") == "vllm"
+        )
         vllm_provider = OpenAICompatibleProvider(ModelConfig(name="", base_url=vllm_url))
-        vllm_health = vllm_provider.check_health()
+        # Fast path: when Ollama is already healthy and vLLM was not explicitly
+        # requested, avoid a second timeout-bound local probe during startup.
+        vllm_health = (
+            vllm_provider.check_health()
+            if explicit_vllm or not ollama_health.get("reachable")
+            else {"reachable": False, "models": []}
+        )
         if vllm_health.get("reachable"):
             models = vllm_health.get("models", [])
             primary_model = vllm_health.get("detected_model") or (models[0] if models else "")
@@ -125,6 +135,10 @@ class BackendManager:
                 provider=vllm_provider,
                 action_hint="vLLM local server is not running.",
             )
+
+        if not include_remote:
+            self.backends = discovered
+            return discovered
 
         # 3. Lightning AI Remote Dynamic Probe
         remote_cfg: RemoteConfig = self.config.remote
