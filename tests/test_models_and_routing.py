@@ -23,6 +23,20 @@ def test_model_registry_operations():
     assert len(registry.list_models()) >= 3
 
 
+def test_curated_profiles_include_routing_metadata():
+    registry = ModelRegistry()
+
+    gemma = registry.get("gemma3:4b-it-qat")
+    slm = registry.get("qwen2.5-coder-1.5b-instruct")
+    coder = registry.get("qwen3-coder-30b-a3b-instruct")
+    remote = registry.get("qwen3-coder-next")
+
+    assert gemma and gemma.parameter_billions == 4
+    assert slm and not slm.supports_tools and "ollama" in slm.engines
+    assert coder and coder.supports_tools and coder.context_size >= 128000
+    assert remote and remote.availability == "remote" and remote.parameter_billions > coder.parameter_billions
+
+
 def test_model_manager_operations():
     manager = get_model_manager()
     available = manager.list_available()
@@ -58,3 +72,45 @@ def test_model_router_transparent_decisions():
     assert decision.category == TaskCategory.DEBUGGING.value
     assert len(decision.model_name) > 0
     assert len(decision.reasoning) > 0
+
+
+def test_router_selects_smallest_compatible_model_and_prefers_warm_state():
+    router = ModelRouter(ForgeConfig())
+
+    fast = router.route_task("What is a Python list?", latency_budget_ms=1200)
+    assert fast.selected_model_id == "qwen2.5-coder-1.5b-instruct"
+
+    warm = router.route_task(
+        "Explain this code",
+        warm_models={"gemma3:4b-it-qat": True},
+        latency_budget_ms=1200,
+    )
+    assert warm.selected_model_id == "gemma3:4b-it-qat"
+
+
+def test_router_escalates_for_tools_and_long_context():
+    router = ModelRouter(ForgeConfig())
+
+    decision = router.route_task(
+        "Debug the repository and fix the failing tests",
+        context_files_count=20,
+        requires_tools=True,
+        required_context_size=100000,
+    )
+
+    assert decision.supports_tools is True
+    assert decision.context_size >= 100000
+    assert decision.selected_model_id == "qwen3-coder-30b-a3b-instruct"
+
+
+def test_router_honors_explicit_model_override():
+    router = ModelRouter(ForgeConfig())
+
+    decision = router.route_task(
+        "What is the current model?",
+        model_override="gemma3:4b-it-qat",
+        requires_tools=True,
+    )
+
+    assert decision.selected_model_id == "gemma3:4b-it-qat"
+    assert "Explicit model override" in decision.reasoning

@@ -15,6 +15,20 @@ class ModelSpec:
     context_size: int = 16384
     availability: str = "remote"  # "remote" or "local"
     description: str = ""
+    # Routing metadata. Defaults preserve compatibility with user-defined specs.
+    supports_tools: bool | None = None
+    latency_target_ms: int | None = None
+    hardware: List[str] = field(default_factory=lambda: ["cpu"])
+    engines: List[str] = field(default_factory=list)
+    parameter_billions: float = 0.0
+    task_categories: List[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Normalize metadata while keeping capabilities as the legacy source."""
+        if self.supports_tools is None:
+            self.supports_tools = "tool_use" in self.capabilities
+        self.hardware = [item.lower() for item in self.hardware]
+        self.engines = [item.lower() for item in self.engines]
 
 
 class ModelRegistry:
@@ -36,7 +50,10 @@ class ModelRegistry:
             speed="medium",
             context_size=16384,
             availability="remote",
-            description="Primary high-capability open-weight coding and reasoning model running on remote L40S GPU."
+            description="Primary high-capability open-weight coding and reasoning model running on remote L40S GPU.",
+            supports_tools=True, latency_target_ms=2500,
+            hardware=["gpu", "remote", "48gb-vram"], engines=["vllm", "openai-compatible"],
+            parameter_billions=27, task_categories=["large coding task", "repository level task", "debugging", "refactoring"]
         ))
 
         self.register(ModelSpec(
@@ -49,7 +66,10 @@ class ModelRegistry:
             speed="fast",
             context_size=16384,
             availability="local",
-            description="Fast local open-weight model for lightweight coding tasks and explanations."
+            description="Fast local open-weight model for lightweight coding tasks and explanations.",
+            supports_tools=False, latency_target_ms=1200,
+            hardware=["cpu", "gpu", "local"], engines=["ollama", "vllm"],
+            parameter_billions=7, task_categories=["small coding task", "code explanation"]
         ))
 
         self.register(ModelSpec(
@@ -62,7 +82,10 @@ class ModelRegistry:
             speed="fast",
             context_size=8192,
             availability="local",
-            description="Compact model suited for fast explanations and lightweight questions."
+            description="Compact model suited for fast explanations and lightweight questions.",
+            supports_tools=False, latency_target_ms=1000,
+            hardware=["cpu", "gpu", "local"], engines=["ollama", "vllm"],
+            parameter_billions=9, task_categories=["simple question", "code explanation"]
         ))
 
         self.register(ModelSpec(
@@ -75,7 +98,48 @@ class ModelRegistry:
             speed="fast",
             context_size=8192,
             availability="local",
-            description="Quantized local instruction-tuned Gemma 3 4B model running on Ollama."
+            description="Quantized local instruction-tuned Gemma 3 4B model running on Ollama.",
+            supports_tools=False, latency_target_ms=1000,
+            hardware=["cpu", "gpu", "local"], engines=["ollama"],
+            parameter_billions=4, task_categories=["simple question", "code explanation", "small coding task"]
+        ))
+
+        # Curated profiles used by the capability-aware router.
+        self.register(ModelSpec(
+            name="Qwen Coder SLM",
+            model_id="qwen2.5-coder-1.5b-instruct",
+            provider="ollama",
+            capabilities=["small_coding_task", "code_explanation"],
+            coding_capability=7, reasoning_capability=6, speed="fast",
+            context_size=32768, availability="local",
+            description="Small, fast coding model for low-latency local edits and explanations.",
+            supports_tools=False, latency_target_ms=700,
+            hardware=["cpu", "gpu", "local"], engines=["ollama", "vllm"],
+            parameter_billions=1.5, task_categories=["simple question", "code explanation", "small coding task"]
+        ))
+        self.register(ModelSpec(
+            name="Qwen3-Coder 30B A3B Instruct",
+            model_id="qwen3-coder-30b-a3b-instruct",
+            provider="openai-compatible",
+            capabilities=["code_generation", "refactoring", "debugging", "repository_level_task", "reasoning", "tool_use"],
+            coding_capability=10, reasoning_capability=9, speed="medium",
+            context_size=262144, availability="remote",
+            description="Agentic coding model with a sparse architecture and long context.",
+            supports_tools=True, latency_target_ms=2500,
+            hardware=["gpu", "remote", "24gb-vram"], engines=["vllm", "openai-compatible"],
+            parameter_billions=30.5, task_categories=["normal coding task", "large coding task", "repository level task", "debugging", "refactoring"]
+        ))
+        self.register(ModelSpec(
+            name="Qwen3-Coder Next",
+            model_id="qwen3-coder-next",
+            provider="openai-compatible",
+            capabilities=["code_generation", "refactoring", "debugging", "repository_level_task", "reasoning", "tool_use"],
+            coding_capability=10, reasoning_capability=10, speed="slow",
+            context_size=262144, availability="remote",
+            description="Largest remote coding tier for difficult repository-scale work.",
+            supports_tools=True, latency_target_ms=5000,
+            hardware=["gpu", "remote", "48gb-vram"], engines=["vllm", "openai-compatible"],
+            parameter_billions=80, task_categories=["large coding task", "repository level task", "debugging", "refactoring"]
         ))
 
     def register(self, spec: ModelSpec) -> None:
