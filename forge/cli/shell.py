@@ -64,7 +64,10 @@ def _legacy_banner_art(subtitle: str) -> str:
 
 # The original banner used box-drawing characters that were already mojibake in
 # the source tree. Keep the public helper names, but render an ASCII-safe UI.
-BANNER_ART = """[bold bright_cyan]FORGE[/bold bright_cyan] [dim]|[/dim] {subtitle}"""
+BANNER_ART = """[cyan]╭──────────────────────────────────────────────╮[/cyan]
+[cyan]│[/cyan] [bold bright_cyan]FORGE AI CODING AGENT[/bold bright_cyan]                  [cyan]│[/cyan]
+[cyan]│[/cyan] [bold white]{subtitle}[/bold white] [cyan]│[/cyan]
+[cyan]╰──────────────────────────────────────────────╯[/cyan]"""
 
 
 def generate_banner_art(subtitle: str) -> str:
@@ -133,8 +136,8 @@ class ExecutionMetrics:
 
     def format_display(self) -> str:
         return (
-            f"⚡ {self.ttft:.3f}s TTFT | {self.total_time:.1f}s total | "
-            f"{self.tokens_per_second:.1f} tok/s | {self.token_count} tokens"
+            f"⚡ {self.ttft:.3f}s TTFT · {self.total_time:.1f}s total · "
+            f"{self.tokens_per_second:.1f} tok/s · {self.token_count} tokens"
         )
 
 
@@ -475,69 +478,16 @@ class ForgeShell:
         }
 
     def get_user_input(self) -> str:
-        """Read a prompt without a decorative box around every turn."""
-        try:
-            if self.session is not None:
-                return self.session.prompt(HTML("<cyan>forge &gt; </cyan>")).strip()
-            return input("forge > ").strip()
-        except (KeyboardInterrupt, EOFError):
-            raise
+        """Render the original bordered prompt UI."""
+        return self._legacy_get_user_input()
 
     def print_banner(self) -> None:
-        """Print one compact startup line."""
-        active = None
-        if hasattr(self.orchestrator, "backend_manager"):
-            active = self.orchestrator.backend_manager.get_active_backend()
-        if active and active.model:
-            subtitle = f"{format_model_display_name(active.model)} | {active.name} | {active.location}"
-        else:
-            subtitle = "AI coding agent"
-        try:
-            self.console.print(generate_banner_art(subtitle))
-        except Exception:
-            print(f"FORGE | {subtitle}")
+        """Render the original Forge banner UI."""
+        return self._legacy_print_banner()
 
     def _stream_response(self, prompt: str, use_history: bool = True) -> dict[str, Any]:
-        """Stream Markdown plainly, then show one compact metrics line."""
-        start_time = time.perf_counter()
-        ttft: float | None = None
-        chunks: list[str] = []
-        status = None
-        try:
-            status = self.console.status("[dim]thinking...[/dim]", spinner="dots")
-            status.start()
-            for chunk in self.orchestrator.stream_task(prompt, use_history=use_history):
-                chunks.append(chunk)
-                if ttft is None and chunk.strip():
-                    ttft = time.perf_counter() - start_time
-                    status.stop()
-                    status = None
-        finally:
-            if status is not None:
-                status.stop()
-
-        total_time = time.perf_counter() - start_time
-        ttft = total_time if ttft is None else ttft
-        response = strip_internal_reasoning("".join(chunks))
-        if response:
-            try:
-                self.console.print(Markdown(response, code_theme="monokai"))
-            except Exception:
-                print(response)
-        token_count = count_tokens(response)
-        decode_time = max(total_time - ttft, 0.001)
-        metrics = ExecutionMetrics(
-            ttft=ttft,
-            total_time=total_time,
-            token_count=token_count,
-            tokens_per_second=token_count / decode_time if token_count else 0.0,
-        )
-        self.last_metrics = metrics
-        try:
-            self.console.print(f"[dim]{metrics.format_display()}[/dim]")
-        except Exception:
-            print(metrics.format_display())
-        return {"metrics": metrics, "response": response}
+        """Render the original Rich response panel UI."""
+        return self._legacy_stream_response(prompt, use_history)
 
     def run_single_prompt(self, prompt: str) -> None:
         """Executes a single non-interactive prompt with streaming response."""

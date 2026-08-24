@@ -159,7 +159,7 @@ class OllamaProvider(BaseProvider):
             "model": model_id,
             "messages": messages,
             "stream": False,
-            "keep_alive": "30m",
+            "keep_alive": -1,
             "options": options,
         }
         if tools and self.supports_tools is not False:
@@ -247,7 +247,7 @@ class OllamaProvider(BaseProvider):
             "model": model_id,
             "messages": messages,
             "stream": True,
-            "keep_alive": "30m",
+            "keep_alive": -1,
             "options": options,
         }
         if tools and self.supports_tools is not False:
