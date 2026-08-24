@@ -15,23 +15,23 @@ def test_file_tools():
         test_file = Path(tmpdir) / "sample.txt"
         
         # Write
-        writer = WriteFileTool()
+        writer = WriteFileTool(tmpdir)
         wres = writer.execute(path=str(test_file), content="Hello World")
         assert wres.get("status") == "success"
 
         # Read
-        reader = ReadFileTool()
+        reader = ReadFileTool(tmpdir)
         rres = reader.execute(path=str(test_file))
         assert rres.get("content") == "Hello World"
 
         # Edit
-        editor = EditFileTool()
+        editor = EditFileTool(tmpdir)
         eres = editor.execute(path=str(test_file), target_content="World", replacement_content="Forge")
         assert eres.get("status") == "success"
         assert test_file.read_text(encoding="utf-8") == "Hello Forge"
 
         # List
-        lister = ListDirectoryTool()
+        lister = ListDirectoryTool(tmpdir)
         lres = lister.execute(path=tmpdir)
         assert len(lres.get("items", [])) == 1
 

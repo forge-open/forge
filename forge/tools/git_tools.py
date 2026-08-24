@@ -9,9 +9,12 @@ class GitStatusTool(BaseTool):
     description = "Get current git working tree status."
     parameters = {"type": "object", "properties": {}}
 
+    def __init__(self, repo_dir: str = "."):
+        self.repo_dir = repo_dir
+
     def execute(self, **kwargs) -> dict[str, Any]:
         try:
-            res = subprocess.run("git status --short", shell=True, capture_output=True, text=True)
+            res = subprocess.run(["git", "status", "--short"], cwd=self.repo_dir, capture_output=True, text=True)
             return {"status": res.stdout, "exit_code": res.returncode}
         except Exception as e:
             return {"error": f"Git status failed: {e}"}
@@ -26,10 +29,13 @@ class GitDiffTool(BaseTool):
         }
     }
 
+    def __init__(self, repo_dir: str = "."):
+        self.repo_dir = repo_dir
+
     def execute(self, staged: bool = False, **kwargs) -> dict[str, Any]:
-        cmd = "git diff --staged" if staged else "git diff"
+        cmd = ["git", "diff", "--staged"] if staged else ["git", "diff"]
         try:
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            res = subprocess.run(cmd, cwd=self.repo_dir, capture_output=True, text=True)
             return {"diff": res.stdout, "exit_code": res.returncode}
         except Exception as e:
             return {"error": f"Git diff failed: {e}"}
@@ -44,10 +50,14 @@ class GitLogTool(BaseTool):
         }
     }
 
+    def __init__(self, repo_dir: str = "."):
+        self.repo_dir = repo_dir
+
     def execute(self, max_count: int = 5, **kwargs) -> dict[str, Any]:
-        cmd = f"git log -n {max_count} --oneline"
+        count = max(1, min(int(max_count), 100))
+        cmd = ["git", "log", "-n", str(count), "--oneline"]
         try:
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            res = subprocess.run(cmd, cwd=self.repo_dir, capture_output=True, text=True)
             return {"log": res.stdout, "exit_code": res.returncode}
         except Exception as e:
             return {"error": f"Git log failed: {e}"}

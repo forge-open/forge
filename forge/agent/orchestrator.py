@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Generator
 from typing import Any
@@ -25,6 +26,8 @@ from forge.tools.git_tools import GitDiffTool, GitLogTool, GitStatusTool
 from forge.tools.terminal_tools import RunCommandTool, RunTestsTool
 from forge.utils.logging import logger
 
+MAX_TOOL_ITERATIONS = 8
+
 
 class AgentOrchestrator:
     """Core Agent Orchestrator managing model routing, context, tools, and execution loops."""
@@ -43,16 +46,17 @@ class AgentOrchestrator:
         self._register_default_tools()
 
     def _register_default_tools(self) -> None:
-        self.registry.register(ReadFileTool())
-        self.registry.register(WriteFileTool())
-        self.registry.register(EditFileTool())
-        self.registry.register(SearchFilesTool())
-        self.registry.register(ListDirectoryTool())
-        self.registry.register(RunCommandTool(safe_mode=self.config.safe_mode))
-        self.registry.register(RunTestsTool())
-        self.registry.register(GitStatusTool())
-        self.registry.register(GitDiffTool())
-        self.registry.register(GitLogTool())
+        workspace_root = self.git.repo_dir.resolve()
+        self.registry.register(ReadFileTool(workspace_root))
+        self.registry.register(WriteFileTool(workspace_root))
+        self.registry.register(EditFileTool(workspace_root))
+        self.registry.register(SearchFilesTool(workspace_root))
+        self.registry.register(ListDirectoryTool(workspace_root))
+        self.registry.register(RunCommandTool(safe_mode=self.config.safe_mode, workspace_root=workspace_root))
+        self.registry.register(RunTestsTool(workspace_root))
+        self.registry.register(GitStatusTool(workspace_root))
+        self.registry.register(GitDiffTool(workspace_root))
+        self.registry.register(GitLogTool(workspace_root))
 
     def clear_conversation(self) -> None:
         """Clears current session conversation history."""
@@ -94,22 +98,82 @@ class AgentOrchestrator:
             ]
 
         logger.info(f"Orchestrator running task with routed model '{routing.selected_model_id}'...")
-        start_time = time.perf_counter()
-        response = provider.generate(messages=messages)
-        model_time = time.perf_counter() - start_time
+        tools = self.registry.get_schemas()
+        executed_tools: list[dict[str, Any]] = []
+        all_tool_calls: list[Any] = []
+        model_time = 0.0
+        response = None
 
-        if use_history and response.content:
-            self.conversation.add_assistant_message(response.content)
+        for iteration in range(MAX_TOOL_ITERATIONS):
+            start_time = time.perf_counter()
+            response = provider.generate(messages=messages, tools=tools)
+            model_time += time.perf_counter() - start_time
 
-        self.memory.record_task(prompt, response.content[:200] if response.content else "")
+            tool_calls = getattr(response, "tool_calls", []) or []
+            all_tool_calls.extend(tool_calls)
+
+            if not tool_calls:
+                break
+
+            messages.append(self._assistant_tool_call_message(response.content, tool_calls))
+
+            for tool_call in tool_calls:
+                result = self.registry.execute(tool_call.function_name, tool_call.arguments)
+                executed_tool = {
+                    "id": tool_call.id,
+                    "name": tool_call.function_name,
+                    "arguments": tool_call.arguments,
+                    "result": result,
+                }
+                executed_tools.append(executed_tool)
+                messages.append(self._tool_result_message(tool_call.id, tool_call.function_name, result))
+
+        else:
+            logger.warning("Stopping tool loop after reaching max tool iterations.")
+
+        final_content = response.content if response is not None else ""
+
+        if use_history:
+            self.conversation.messages = messages
+            if final_content and (not messages or messages[-1].get("role") != "assistant"):
+                self.conversation.add_assistant_message(final_content)
+
+        self.memory.record_task(prompt, final_content[:200] if final_content else "")
 
         return {
             "model": routing.model_name,
             "routing": routing,
-            "content": response.content,
-            "tool_calls": getattr(response, "tool_calls", []),
-            "executed_tools": [],
+            "content": final_content,
+            "tool_calls": all_tool_calls,
+            "executed_tools": executed_tools,
             "model_time": model_time,
+        }
+
+    def _assistant_tool_call_message(self, content: str, tool_calls: list[Any]) -> dict[str, Any]:
+        """Formats assistant tool requests for OpenAI-compatible chat history."""
+        return {
+            "role": "assistant",
+            "content": content or "",
+            "tool_calls": [
+                {
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function_name,
+                        "arguments": json.dumps(tool_call.arguments),
+                    },
+                }
+                for tool_call in tool_calls
+            ],
+        }
+
+    def _tool_result_message(self, tool_call_id: str, name: str, result: dict[str, Any]) -> dict[str, Any]:
+        """Formats local tool results for the follow-up model call."""
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "name": name,
+            "content": json.dumps(result),
         }
 
     def stream_task(self, prompt: str, use_history: bool = True) -> Generator[str, None, None]:
@@ -128,7 +192,7 @@ class AgentOrchestrator:
             ]
 
         full_response = []
-        for chunk in provider.generate_stream(messages=messages):
+        for chunk in provider.generate_stream(messages=messages, tools=self.registry.get_schemas()):
             full_response.append(chunk)
             yield chunk
 

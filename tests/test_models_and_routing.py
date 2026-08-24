@@ -32,10 +32,12 @@ def test_model_manager_operations():
     assert len(installed) > 0
 
     install_res = manager.install_model("qwen3.8-27b-fp8")
-    assert install_res["status"] == "success"
+    assert install_res["status"] == "not_implemented"
+    assert install_res["changed"] is False
 
     remove_res = manager.remove_model("qwen3.8-27b-fp8")
-    assert remove_res["status"] == "success"
+    assert remove_res["status"] == "not_implemented"
+    assert remove_res["changed"] is False
 
 
 def test_task_classification():

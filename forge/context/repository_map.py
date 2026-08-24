@@ -16,7 +16,7 @@ class RepositoryMap:
         if depth > max_depth:
             return
         
-        ignored = {".git", ".forge", "__pycache__", "venv", ".venv", "build", "dist", ".pytest_cache"}
+        ignored = {".git", ".forge", "__pycache__", "venv", ".venv", "build", "dist", ".pytest_cache", "node_modules", "opsra"}
         try:
             for item in sorted(current.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
                 if item.name in ignored or item.name.startswith("."):

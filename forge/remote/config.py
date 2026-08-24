@@ -152,4 +152,41 @@ def load_remote_config(data: dict[str, Any] | None = None) -> RemoteConfig:
             if "retry_interval" in remote_data:
                 cfg.retry_interval = float(remote_data["retry_interval"])
 
+    # Re-apply environment values after YAML/dict values so deployment-specific
+    # settings always win over checked-in defaults.
+    env_values = {
+        "provider": ("FORGE_REMOTE_PROVIDER", str.lower),
+        "studio": ("FORGE_LIGHTNING_STUDIO", str),
+        "gpu": ("FORGE_LIGHTNING_GPU", str),
+        "teamspace": ("FORGE_LIGHTNING_TEAMSPACE", str),
+        "user": ("FORGE_LIGHTNING_USER", str),
+        "api_key": ("FORGE_LIGHTNING_API_KEY", str),
+        "ssh_host": ("FORGE_SSH_HOST", str),
+        "ssh_user": ("FORGE_SSH_USER", str),
+        "ssh_key_path": ("FORGE_SSH_KEY_PATH", str),
+    }
+    for field_name, (env_name, converter) in env_values.items():
+        value = os.getenv(env_name)
+        if value:
+            setattr(cfg, field_name, converter(value))
+    api_key = os.getenv("FORGE_LIGHTNING_API_KEY") or os.getenv("LIGHTNING_API_KEY")
+    if api_key:
+        cfg.api_key = api_key
+    for field_name, env_name, converter in (
+        ("remote_port", "FORGE_REMOTE_PORT", int),
+        ("ssh_port", "FORGE_SSH_PORT", int),
+        ("startup_timeout", "FORGE_REMOTE_STARTUP_TIMEOUT", float),
+        ("retry_interval", "FORGE_REMOTE_RETRY_INTERVAL", float),
+    ):
+        value = os.getenv(env_name)
+        if value:
+            try:
+                setattr(cfg, field_name, converter(value))
+            except ValueError:
+                pass
+    for field_name, env_name in (("auto_start", "FORGE_REMOTE_AUTO_START"), ("auto_stop", "FORGE_REMOTE_AUTO_STOP")):
+        value = os.getenv(env_name)
+        if value:
+            setattr(cfg, field_name, value.lower() in ("true", "1", "yes"))
+
     return cfg

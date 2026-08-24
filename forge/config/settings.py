@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,12 +16,16 @@ except ImportError:
 
 from forge.remote.config import RemoteConfig, load_remote_config
 
+DEFAULT_BASE_URL = "http://localhost:8000/v1"
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
+VALID_BACKENDS = {"auto", "ollama", "vllm", "lightning"}
+
 
 @dataclass
 class ModelConfig:
     name: str
     provider: str = "openai-compatible"
-    base_url: str = "http://localhost:8000/v1"
+    base_url: str = DEFAULT_BASE_URL
     api_key: str = "local-key"
     temperature: float = 0.1
     top_p: float = 0.95
@@ -29,8 +34,8 @@ class ModelConfig:
 
 @dataclass
 class ForgeConfig:
-    base_url: str = "http://localhost:8000/v1"
-    ollama_base_url: str = "http://localhost:11434"
+    base_url: str = DEFAULT_BASE_URL
+    ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
     active_backend: str = "auto"
     model: str = ""
     temperature: float = 0.1
@@ -69,7 +74,7 @@ class ForgeConfig:
 
 def load_config(config_path: str | None = None) -> ForgeConfig:
     """Loads configuration from environment variables, yaml config, or defaults."""
-    base_url = os.getenv("FORGE_BASE_URL") or "http://localhost:8000/v1"
+    base_url = os.getenv("FORGE_BASE_URL") or DEFAULT_BASE_URL
     model = os.getenv("FORGE_MODEL") or ""
 
     try:
@@ -99,14 +104,18 @@ def load_config(config_path: str | None = None) -> ForgeConfig:
             max_tokens=max_tokens,
         )
 
-    # Check potential config locations
-    paths_to_check = []
+    # Check potential config locations. The checked-in default config is last so
+    # local/user config and environment variables remain the source of truth.
+    paths_to_check: list[Path] = []
     if config_path:
         paths_to_check.append(Path(config_path))
-    paths_to_check.extend([
-        Path.cwd() / ".forge" / "config.yaml",
-        Path.home() / ".forge" / "config.yaml"
-    ])
+    paths_to_check.extend(
+        [
+            Path.cwd() / ".forge" / "config.yaml",
+            Path.home() / ".forge" / "config.yaml",
+            Path(__file__).resolve().parents[2] / "configs" / "default_config.yaml",
+        ]
+    )
 
     for p in paths_to_check:
         if p.exists() and p.is_file():
@@ -115,6 +124,14 @@ def load_config(config_path: str | None = None) -> ForgeConfig:
                     data = yaml.safe_load(f) or {}
                 if "base_url" in data:
                     cfg.base_url = str(data["base_url"])
+                if "ollama_base_url" in data:
+                    cfg.ollama_base_url = str(data["ollama_base_url"])
+                if "active_backend" in data:
+                    backend = str(data["active_backend"]).lower()
+                    if backend in VALID_BACKENDS:
+                        cfg.active_backend = backend
+                    else:
+                        warnings.warn(f"Ignoring invalid Forge backend '{backend}' in {p}", RuntimeWarning, stacklevel=2)
                 if "model" in data:
                     cfg.model = str(data["model"])
                 if "temperature" in data:
@@ -144,8 +161,8 @@ def load_config(config_path: str | None = None) -> ForgeConfig:
                 if "remote" in data and isinstance(data["remote"], dict):
                     cfg.remote = load_remote_config(data["remote"])
                 break
-            except Exception:
-                pass
+            except (OSError, TypeError, ValueError, yaml.YAMLError) as exc:
+                warnings.warn(f"Failed to load Forge config from {p}: {exc}", RuntimeWarning, stacklevel=2)
 
     if not hasattr(cfg, "remote") or cfg.remote is None:
         cfg.remote = load_remote_config()
@@ -154,11 +171,32 @@ def load_config(config_path: str | None = None) -> ForgeConfig:
         cfg.remote = load_remote_config(cfg.remote.__dict__)
 
     # Environment variable overrides
+    # Environment variables always win over YAML files.
+    if os.getenv("FORGE_BASE_URL"):
+        cfg.base_url = os.getenv("FORGE_BASE_URL", DEFAULT_BASE_URL)
+    elif os.getenv("FORGE_LOCAL_VLLM_BASE_URL"):
+        cfg.base_url = os.getenv("FORGE_LOCAL_VLLM_BASE_URL", DEFAULT_BASE_URL)
+    if os.getenv("FORGE_MODEL"):
+        cfg.model = os.getenv("FORGE_MODEL", "")
+    if os.getenv("FORGE_TEMPERATURE"):
+        try:
+            cfg.temperature = float(os.getenv("FORGE_TEMPERATURE", "0.1"))
+        except ValueError:
+            warnings.warn("Ignoring invalid FORGE_TEMPERATURE", RuntimeWarning, stacklevel=2)
+    if os.getenv("FORGE_MAX_TOKENS"):
+        try:
+            cfg.max_tokens = int(os.getenv("FORGE_MAX_TOKENS", "2048"))
+        except ValueError:
+            warnings.warn("Ignoring invalid FORGE_MAX_TOKENS", RuntimeWarning, stacklevel=2)
     ollama_url = os.getenv("FORGE_OLLAMA_BASE_URL") or os.getenv("FORGE_LOCAL_BASE_URL")
     if ollama_url:
         cfg.ollama_base_url = ollama_url
     if os.getenv("FORGE_BACKEND"):
-        cfg.active_backend = os.getenv("FORGE_BACKEND")
+        backend = os.getenv("FORGE_BACKEND", "").lower()
+        if backend in VALID_BACKENDS:
+            cfg.active_backend = backend
+        else:
+            warnings.warn(f"Ignoring invalid FORGE_BACKEND '{backend}'", RuntimeWarning, stacklevel=2)
     if os.getenv("FORGE_PRIMARY_MODEL"):
         cfg.primary_model = os.getenv("FORGE_PRIMARY_MODEL")
     if os.getenv("FORGE_SAFE_MODE"):

@@ -98,11 +98,7 @@ class BackendManager:
         )
         vllm_provider = OpenAICompatibleProvider(ModelConfig(name="", base_url=vllm_url))
         vllm_health = vllm_provider.check_health()
-        lightning_running = (
-            hasattr(self.remote_manager, "_provider")
-            and self.remote_manager._provider.is_running()
-        )
-        if vllm_health.get("reachable") and not lightning_running:
+        if vllm_health.get("reachable"):
             models = vllm_health.get("models", [])
             primary_model = vllm_health.get("detected_model") or (models[0] if models else "")
             discovered["vllm"] = BackendInfo(
@@ -181,6 +177,11 @@ class BackendManager:
 
         if self._active_backend_id and self._active_backend_id in self.backends:
             return self.backends[self._active_backend_id]
+
+        preferred = getattr(self.config, "active_backend", "auto")
+        if preferred != "auto" and preferred in self.backends:
+            self._active_backend_id = preferred
+            return self.backends[preferred]
 
         # Auto-selection prioritizing connected backends:
         if self.backends.get("ollama") and self.backends["ollama"].is_available():

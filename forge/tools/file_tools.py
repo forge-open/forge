@@ -4,6 +4,20 @@ from typing import Any
 from forge.tools.base import BaseTool
 
 
+def _workspace_root(workspace_root: str | Path | None = None) -> Path:
+    return Path(workspace_root or Path.cwd()).resolve()
+
+
+def _resolve_within_workspace(path: str, workspace_root: Path) -> tuple[Path | None, str | None]:
+    requested = Path(path)
+    resolved = (requested if requested.is_absolute() else workspace_root / requested).resolve()
+    try:
+        resolved.relative_to(workspace_root)
+    except ValueError:
+        return None, f"Path '{path}' is outside the configured workspace root."
+    return resolved, None
+
+
 class ReadFileTool(BaseTool):
     name = "read_file"
     description = "Read contents of a file at target relative or absolute path."
@@ -15,8 +29,13 @@ class ReadFileTool(BaseTool):
         "required": ["path"]
     }
 
+    def __init__(self, workspace_root: str | Path | None = None):
+        self.workspace_root = _workspace_root(workspace_root)
+
     def execute(self, path: str, **kwargs) -> dict[str, Any]:
-        p = Path(path)
+        p, error = _resolve_within_workspace(path, self.workspace_root)
+        if error:
+            return {"error": error}
         if not p.exists() or not p.is_file():
             return {"error": f"File '{path}' does not exist or is not a file."}
         try:
@@ -37,8 +56,13 @@ class WriteFileTool(BaseTool):
         "required": ["path", "content"]
     }
 
+    def __init__(self, workspace_root: str | Path | None = None):
+        self.workspace_root = _workspace_root(workspace_root)
+
     def execute(self, path: str, content: str, **kwargs) -> dict[str, Any]:
-        p = Path(path)
+        p, error = _resolve_within_workspace(path, self.workspace_root)
+        if error:
+            return {"error": error}
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
@@ -59,8 +83,13 @@ class EditFileTool(BaseTool):
         "required": ["path", "target_content", "replacement_content"]
     }
 
+    def __init__(self, workspace_root: str | Path | None = None):
+        self.workspace_root = _workspace_root(workspace_root)
+
     def execute(self, path: str, target_content: str, replacement_content: str, **kwargs) -> dict[str, Any]:
-        p = Path(path)
+        p, error = _resolve_within_workspace(path, self.workspace_root)
+        if error:
+            return {"error": error}
         if not p.exists():
             return {"error": f"File '{path}' does not exist."}
         try:
@@ -85,14 +114,22 @@ class SearchFilesTool(BaseTool):
         "required": ["query"]
     }
 
+    def __init__(self, workspace_root: str | Path | None = None):
+        self.workspace_root = _workspace_root(workspace_root)
+
     def execute(self, query: str, dir_path: str = ".", **kwargs) -> dict[str, Any]:
         matches: list[dict[str, Any]] = []
-        root = Path(dir_path)
+        root, error = _resolve_within_workspace(dir_path, self.workspace_root)
+        if error:
+            return {"error": error}
         if not root.exists():
+            return {"error": f"Directory '{dir_path}' does not exist."}
+        if not root.is_dir():
             return {"error": f"Directory '{dir_path}' does not exist."}
 
         for path in root.rglob("*"):
-            if path.is_file() and not any(part.startswith(".") or part in ("__pycache__", "venv") for part in path.parts):
+            rel_parts = path.relative_to(self.workspace_root).parts
+            if path.is_file() and not any(part.startswith(".") or part.lower() in ("__pycache__", "venv", ".venv", "build", "dist", "node_modules", "opsra") for part in rel_parts):
                 try:
                     text = path.read_text(encoding="utf-8", errors="ignore")
                     if query in text:
@@ -113,8 +150,13 @@ class ListDirectoryTool(BaseTool):
         }
     }
 
+    def __init__(self, workspace_root: str | Path | None = None):
+        self.workspace_root = _workspace_root(workspace_root)
+
     def execute(self, path: str = ".", **kwargs) -> dict[str, Any]:
-        p = Path(path)
+        p, error = _resolve_within_workspace(path, self.workspace_root)
+        if error:
+            return {"error": error}
         if not p.exists() or not p.is_dir():
             return {"error": f"Directory '{path}' does not exist."}
         try:

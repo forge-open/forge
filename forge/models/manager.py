@@ -46,23 +46,41 @@ class ModelManager:
         return installed
 
     def install_model(self, model_identifier: str) -> Dict[str, Any]:
-        """Placeholder interface for installing local model files or downloading checkpoints."""
+        """Reports model availability without pretending to install files or downloads."""
         spec = self.registry.get(model_identifier)
         model_name = spec.name if spec else model_identifier
+        known_model = model_identifier.lower().strip() in {
+            model.model_id.lower() for model in self.registry.list_models()
+        }
         return {
-            "status": "success",
+            "status": "not_implemented",
             "model": model_name,
-            "message": f"Model '{model_name}' is registered and ready for inference."
+            "known_model": known_model,
+            "availability": spec.availability if spec else "unknown",
+            "changed": False,
+            "message": (
+                f"Model '{model_name}' is registered for routing, but ModelManager does not "
+                "download or install model files. No filesystem changes were made."
+            )
         }
 
     def remove_model(self, model_identifier: str) -> Dict[str, Any]:
-        """Placeholder interface for removing cached model checkpoints."""
+        """Reports that model removal is not managed here and no files were changed."""
         spec = self.registry.get(model_identifier)
         model_name = spec.name if spec else model_identifier
+        known_model = model_identifier.lower().strip() in {
+            model.model_id.lower() for model in self.registry.list_models()
+        }
         return {
-            "status": "success",
+            "status": "not_implemented",
             "model": model_name,
-            "message": f"Model '{model_name}' cache entry removed."
+            "known_model": known_model,
+            "availability": spec.availability if spec else "unknown",
+            "changed": False,
+            "message": (
+                f"ModelManager does not track or remove cached checkpoints for '{model_name}'. "
+                "No filesystem changes were made."
+            )
         }
 
 

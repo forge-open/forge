@@ -41,6 +41,7 @@ def main_cli(
     config = load_config()
     if base_url:
         config.base_url = base_url
+        config.active_backend = "vllm"
     if model:
         config.model = model
 

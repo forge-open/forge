@@ -135,6 +135,12 @@ if HAS_PROMPT_TOOLKIT:
                             display=f"/{cmd.name}",
                             display_meta=cmd.description
                         )
+else:
+    class SlashCommandCompleter:
+        """Compatibility stub when prompt_toolkit is unavailable."""
+
+        def __init__(self, registry: SlashCommandRegistry):
+            self.registry = registry
 
 
 class ForgeShell:
@@ -481,8 +487,18 @@ class ForgeShell:
             ollama = discovered.get("ollama")
             vllm = discovered.get("vllm")
             lightning = discovered.get("lightning")
+            preferred = getattr(self.orchestrator.config, "active_backend", "auto")
+            preferred_info = discovered.get(preferred) if preferred != "auto" else None
 
-            if ollama and ollama.is_available():
+            if preferred_info and preferred_info.is_available():
+                self.orchestrator.backend_manager.select_active_backend(preferred)
+                self.print_banner()
+                self.print_status()
+            elif preferred != "auto" and preferred_info:
+                self.orchestrator.backend_manager.select_active_backend(preferred)
+                self.print_banner()
+                self.print_status()
+            elif ollama and ollama.is_available():
                 self.orchestrator.backend_manager.select_active_backend("ollama")
                 self.print_banner()
                 disp_name = format_model_display_name(ollama.model)

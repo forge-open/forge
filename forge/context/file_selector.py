@@ -9,17 +9,23 @@ class FileSelector:
 
     def select_relevant_files(self, task_query: str, max_files: int = 5) -> list[str]:
         keywords = [k.lower() for k in task_query.split() if len(k) > 3]
-        matched_files = []
+        scored_files: list[tuple[int, Path]] = []
 
         if not keywords:
             return []
 
+        ignored = {"venv", ".venv", "__pycache__", "build", "dist", "node_modules", "opsra"}
         for p in self.root_dir.rglob("*"):
-            if p.is_file() and not any(part.startswith(".") or part in ("venv", "__pycache__", "build", "dist") for part in p.parts):
+            if p.is_file() and p.stat().st_size <= 512 * 1024 and not any(part.startswith(".") or part.lower() in ignored for part in p.parts):
                 rel_str = str(p.relative_to(self.root_dir)).lower()
-                if any(kw in rel_str for kw in keywords):
-                    matched_files.append(str(p))
-                    if len(matched_files) >= max_files:
-                        break
+                score = sum(3 for kw in keywords if kw in rel_str)
+                if p.suffix.lower() in {".py", ".md", ".yaml", ".yml", ".toml", ".json", ".ts", ".tsx", ".js"}:
+                    try:
+                        content = p.read_text(encoding="utf-8", errors="ignore").lower()
+                        score += sum(kw in content for kw in keywords)
+                    except OSError:
+                        pass
+                if score:
+                    scored_files.append((score, p))
 
-        return matched_files
+        return [str(p) for _, p in sorted(scored_files, key=lambda item: (-item[0], str(item[1])))[:max_files]]
