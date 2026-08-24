@@ -35,6 +35,7 @@ class OllamaProvider(BaseProvider):
 
         self.tags_url = f"{self.base_url}/api/tags"
         self.chat_url = f"{self.base_url}/api/chat"
+        self.supports_tools: bool | None = None
 
     def check_health(self) -> dict[str, Any]:
         """Checks reachability of Ollama server and retrieves installed models."""
@@ -53,6 +54,12 @@ class OllamaProvider(BaseProvider):
                     detected = self.model_name
                     if not detected and model_names:
                         detected = model_names[0]
+                    capabilities = []
+                    for model in raw_models:
+                        if isinstance(model, dict) and model.get("name") == detected:
+                            capabilities = model.get("capabilities") or []
+                            break
+                    self.supports_tools = True if "tools" in capabilities else (False if capabilities else None)
 
                     return {
                         "status": "connected",
@@ -61,6 +68,8 @@ class OllamaProvider(BaseProvider):
                         "backend": "Ollama",
                         "models": model_names,
                         "detected_model": detected,
+                        "capabilities": capabilities,
+                        "supports_tools": self.supports_tools,
                         "url": self.base_url,
                     }
                 return {
@@ -152,7 +161,7 @@ class OllamaProvider(BaseProvider):
             "stream": False,
             "options": options,
         }
-        if tools:
+        if tools and self.supports_tools is not False:
             payload["tools"] = tools
 
         try:
@@ -182,6 +191,24 @@ class OllamaProvider(BaseProvider):
                 elif response.status_code == 404:
                     return self._generate_openai_fallback(
                         messages, tools, temperature, top_p, max_tokens, model_id
+                    )
+                elif response.status_code == 400 and tools:
+                    # Some Ollama models (including Gemma builds) expose chat
+                    # but reject tool schemas. Retry the ordinary chat request.
+                    logger.warning("Ollama model rejected tool schemas; retrying without tools.")
+                    payload.pop("tools", None)
+                    response = client.post(self.chat_url, json=payload)
+                    if response.status_code == 200:
+                        resp_json = response.json()
+                        msg = resp_json.get("message", {})
+                        return CompletionResponse(
+                            content=msg.get("content") or "",
+                            role=msg.get("role", "assistant"),
+                            raw_response=resp_json,
+                        )
+                    return CompletionResponse(
+                        content=f"[Error: Ollama returned status {response.status_code}]",
+                        role="assistant",
                     )
                 else:
                     return CompletionResponse(
@@ -221,7 +248,7 @@ class OllamaProvider(BaseProvider):
             "stream": True,
             "options": options,
         }
-        if tools:
+        if tools and self.supports_tools is not False:
             payload["tools"] = tools
 
         try:

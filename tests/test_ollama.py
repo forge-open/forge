@@ -95,6 +95,27 @@ def test_ollama_empty_model_list():
         assert provider.detect_model() == ""
 
 
+def test_ollama_completion_only_model_omits_tools():
+    provider = OllamaProvider(base_url="http://localhost:11434")
+    tags_resp = MagicMock(status_code=200)
+    tags_resp.json.return_value = {
+        "models": [{"name": "gemma3:4b-it-qat", "capabilities": ["completion"]}]
+    }
+    chat_resp = MagicMock(status_code=200)
+    chat_resp.json.return_value = {
+        "message": {"role": "assistant", "content": "Gemma"}
+    }
+    with patch("httpx.Client.get", return_value=tags_resp):
+        provider.check_health()
+    with patch("httpx.Client.post", return_value=chat_resp) as post:
+        result = provider.generate(
+            [{"role": "user", "content": "Which model are you?"}],
+            tools=[{"type": "function", "function": {"name": "unused"}}],
+        )
+    assert result.content == "Gemma"
+    assert "tools" not in post.call_args.kwargs["json"]
+
+
 def test_ollama_generation():
     provider = OllamaProvider(base_url="http://localhost:11434", model_name="llama3.1:8b")
 
