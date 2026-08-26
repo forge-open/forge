@@ -336,10 +336,10 @@ test('terminal: strict ASCII output only', () => {
 test('terminal: contains header, run id, severity marker and estimated-cost markers', () => {
   const out = renderTerminal(richReport);
   for (const marker of [
-    'FORGE RUN REPORT',
+    'FORGE RUN',
     'run-demo-001',
-    '[!]', // warn severity
-    '[i]', // info severity
+    '\n  ! ', // warn severity glyph
+    '\n  i ', // info severity glyph
     'estimated',
     '$18.42',
     '_ Explore #1', // child-agent hierarchy prefix (ASCII fallback of "└ ")
@@ -470,21 +470,22 @@ test('renderers are pure: same input yields byte-identical output', () => {
 
 test('terminal: concise mode omits deep sections; verbose mode includes them', () => {
   const concise = renderTerminal(richReport);
-  assert.ok(concise.includes('=== RUN OVERVIEW ==='));
-  assert.ok(concise.includes('=== AGENT PERFORMANCE ==='));
-  assert.ok(concise.includes('=== WHAT HAPPENED ==='));
-  assert.ok(!concise.includes('=== TASKS ==='), 'task table is verbose-only');
-  assert.ok(!concise.includes('=== FILES ==='), 'files section is verbose-only');
+  assert.ok(concise.includes('AGENTS'));
+  assert.ok(concise.includes('COST'));
+  assert.ok(concise.includes('AGENT PERFORMANCE'));
+  assert.ok(concise.includes('WHAT HAPPENED'));
+  assert.ok(!concise.includes('STATUS'), 'task table is verbose-only');
+  assert.ok(!concise.includes('WRITES'), 'files section is verbose-only');
   assert.ok(!concise.includes('Evidence:'), 'evidence lines are verbose-only');
 
   const verbose = renderTerminal(richReport, { verbose: true });
-  assert.ok(verbose.includes('=== TASKS ==='));
-  assert.ok(verbose.includes('=== FILES ==='));
-  assert.ok(verbose.includes('=== ENGINEERING SIGNALS ==='));
+  assert.ok(verbose.includes('TASKS'));
+  assert.ok(verbose.includes('FILES'));
+  assert.ok(verbose.includes('ENGINEERING SIGNALS'));
   assert.ok(verbose.includes('Evidence:'));
   // recommendations surface in both modes
-  assert.ok(concise.includes('=== RECOMMENDATIONS ==='));
-  assert.ok(verbose.includes('=== RECOMMENDATIONS ==='));
+  assert.ok(concise.includes('RECOMMENDATIONS'));
+  assert.ok(verbose.includes('RECOMMENDATIONS'));
 });
 
 test('terminal: outcome markers and recommendation arrows are ASCII-safe', () => {
@@ -493,4 +494,20 @@ test('terminal: outcome markers and recommendation arrows are ASCII-safe', () =>
   assert.ok(out.includes('+ 2 tasks completed'));
   assert.ok(out.includes('x 1 task failed'));
   assert.ok(out.includes('-> '));
+});
+
+test('terminal: unicode mode uses typographic glyphs; color mode emits ANSI', () => {
+  const uni = renderTerminal(richReport, { unicode: true });
+  assert.ok(uni.includes('╭') && uni.includes('╰'), 'box header');
+  assert.ok(uni.includes('✓'), 'success glyph');
+  assert.ok(uni.includes('→'), 'recommendation arrow');
+  assert.ok(!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(uni), 'no control characters');
+
+  const colored = renderTerminal(richReport, { unicode: true, color: true });
+  assert.ok(colored.includes('\x1b[2m'), 'dim emphasis present');
+  assert.ok(colored.includes('\x1b[32m'), 'ok emphasis present');
+
+  // plain mode stays strictly ASCII
+  const plain = renderTerminal(richReport);
+  assert.match(plain, /^[\x20-\x7E\n\r]*$/);
 });

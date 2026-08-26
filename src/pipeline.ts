@@ -31,7 +31,7 @@ export interface GeneratedReport {
 
 export async function generateReport(
   ref: string | undefined,
-  opts: { writeFiles: boolean; verbose?: boolean },
+  opts: { writeFiles: boolean; verbose?: boolean; unicode?: boolean; color?: boolean },
 ): Promise<GeneratedReport | null> {
   const { resolveRunRef, readRunEvents } = await import('./core/store.js');
   const meta = await resolveRunRef(ref ?? 'latest');
@@ -46,7 +46,11 @@ export async function generateReport(
   const out: GeneratedReport = {
     meta,
     report,
-    terminal: renderTerminal(report, { verbose: opts.verbose === true }),
+    terminal: renderTerminal(report, {
+      verbose: opts.verbose === true,
+      unicode: opts.unicode === true,
+      color: opts.color === true,
+    }),
   };
   if (opts.writeFiles) {
     // runDirFor enforces the strict run-id pattern before any path is built.

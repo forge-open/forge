@@ -1,14 +1,14 @@
 /**
- * Terminal report — STRICT ASCII (codes 32-126 plus \n), no ANSI colors.
+ * Terminal report — the primary Forge surface.
  *
- * Pure function of RunReport: deterministic bytes for deterministic input.
- * Never crashes on sparse data; missing values render as "-".
+ * Pure function of (RunReport, style options): deterministic bytes for
+ * deterministic input. Two presentation modes chosen by the caller:
+ *   unicode  - box-drawing header, thin dividers, typographic symbols
+ *   ascii    - plain fallback for legacy terminals, CI, and pipes
+ * and an optional ANSI color layer (never used for meaning, only emphasis).
  *
- * Two modes, per the CLI-first product rule (the terminal is the primary UI):
- *   concise (default) - header, run overview, agent performance, what happened,
- *                       recommendations. Readable at a glance, SSH/CI-safe.
- *   verbose           - adds evidence under findings, the full task table,
- *                       files overlap, engineering signals, notes/warnings.
+ * Dynamic strings from run data are always stripped to ASCII before being
+ * embedded; typographic glyphs come only from Forge itself.
  */
 import type { RunReport } from '../core/model.js';
 import {
@@ -26,7 +26,6 @@ import {
   num,
   orderAgents,
   pct,
-  REPORT_TITLE,
   runWindow,
   sortedInsights,
   truncate,
@@ -39,164 +38,294 @@ const BAR_INNER = 22; // width of [#####.....] share bars
 export interface TerminalOptions {
   /** Full depth: evidence, task table, files, engineering signals, notes. */
   verbose?: boolean;
+  /** Typographic mode: box header, ─ dividers, ✓ ✕ → glyphs. */
+  unicode?: boolean;
+  /** ANSI emphasis (labels dim, statuses tinted). Meaning never depends on it. */
+  color?: boolean;
 }
 
-/** Output sink handed to every section renderer. */
+interface Glyphs {
+  ok: string;
+  warn: string;
+  info: string;
+  fail: string;
+  unknown: string;
+  arrow: string;
+  divider: string;
+}
+
+const UNICODE: Glyphs = { ok: '✓', warn: '!', info: '·', fail: '✕', unknown: '?', arrow: '→', divider: '─' };
+const ASCII: Glyphs = { ok: '+', warn: '!', info: 'i', fail: 'x', unknown: '?', arrow: '->', divider: '-' };
+
 interface Sink {
-  /** Push one pre-formatted line (ASCII-sanitized). */
   line(s?: string): void;
   blank(): void;
-  section(title: string): void;
-  /** "label     value" key-value line with aligned continuation indent. */
-  kv(label: string, value: string): void;
+  /** Dim section label followed by a thin divider. */
+  section(label: string): void;
+  divider(): void;
 }
 
 export function renderTerminal(r: RunReport, opts: TerminalOptions = {}): string {
   const verbose = opts.verbose === true;
+  const g = opts.unicode === true ? UNICODE : ASCII;
+  const color = opts.color === true;
+  const ansi = {
+    dim: (s: string): string => (color ? `\x1b[2m${s}\x1b[0m` : s),
+    ok: (s: string): string => (color ? `\x1b[32m${s}\x1b[0m` : s),
+    warn: (s: string): string => (color ? `\x1b[33m${s}\x1b[0m` : s),
+    fail: (s: string): string => (color ? `\x1b[31m${s}\x1b[0m` : s),
+  };
+
   const lines: string[] = [];
   const sink: Sink = {
     line(s = ''): void {
-      void lines.push(ascii(s));
+      void lines.push(s);
     },
     blank(): void {
       sink.line('');
     },
-    section(title: string): void {
+    section(label: string): void {
       sink.blank();
-      sink.line(`=== ${cell(title).toUpperCase()} ===`);
+      sink.line(ansi.dim(label.toUpperCase()));
     },
-    kv(label: string, value: string): void {
-      const pad = 10;
-      const parts = wrapWords(value, W - pad);
-      sink.line(label.padEnd(pad) + (parts[0] ?? ''));
-      for (let i = 1; i < parts.length; i++) sink.line(' '.repeat(pad) + parts[i]);
+    divider(): void {
+      sink.line(ansi.dim(g.divider.repeat(W)));
     },
   };
 
-  renderHeader(sink, r);
-  renderOverview(sink, r);
-  renderAgents(sink, r);
-  renderWhatHappened(sink, r, verbose);
-  renderRecommendations(sink, r);
+  renderHeader(sink, r, g, ansi);
+  renderKpis(sink, r, ansi);
+  sink.divider();
+  renderOutcomes(sink, r, g, ansi);
+  renderAgents(sink, r, g, ansi);
+  sink.divider();
+  renderWhatHappened(sink, r, g, ansi, verbose);
+  renderRecommendations(sink, r, g, ansi);
   if (verbose) {
-    renderTasks(sink, r);
-    renderFiles(sink, r);
+    sink.divider();
+    renderTasks(sink, r, ansi);
+    renderFiles(sink, r, ansi);
     renderSignals(sink, r);
   }
-  renderFooter(sink, r, verbose);
+  renderFooter(sink, r, ansi, verbose);
 
-  return lines.join('\n') + '\n';
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n') + '\n';
 }
 
 // ---------------------------------------------------------------------------
-// Header
+// Header + KPIs
 // ---------------------------------------------------------------------------
 
-function renderHeader(out: Sink, r: RunReport): void {
-  out.line('='.repeat(W));
-  out.line(REPORT_TITLE);
-  out.line('='.repeat(W));
-  out.blank();
-
-  out.kv('run id', cell(r.meta.runId) || '-');
-  out.kv('source', cell(r.meta.source) || '-');
-  if (r.meta.project !== undefined && r.meta.project.trim() !== '') {
-    out.kv('project', cell(r.meta.project));
-  }
-  if (r.meta.generator !== undefined && r.meta.generator.trim() !== '') {
-    out.kv('generator', cell(r.meta.generator));
+function renderHeader(
+  out: Sink,
+  r: RunReport,
+  g: Glyphs,
+  ansi: { dim(s: string): string },
+): void {
+  const project = r.meta.project?.trim() ? ascii(r.meta.project.trim()) : '';
+  const subtitleParts = [project, ascii(cell(r.meta.source))].filter((p) => p !== '');
+  if (g.divider === '─') {
+    // Padding is computed from PLAIN text lengths; ANSI codes add string length
+    // but zero display width.
+    const title = ' FORGE RUN';
+    const sub = subtitleParts.join(' · ');
+    const pad = Math.max(0, W - 2 - (title.length + (sub ? 2 : 0) + sub.length));
+    out.line(`╭${g.divider.repeat(W - 2)}╮`);
+    out.line(`│${title}${sub ? `  ${ansi.dim(sub)}` : ''}${' '.repeat(pad)}│`);
+    out.line(`╰${g.divider.repeat(W - 2)}╯`);
+  } else {
+    out.line('FORGE RUN');
+    if (subtitleParts.length > 0) out.line(ansi.dim(subtitleParts.join(' | ')));
+    out.line(ansi.dim(g.divider.repeat(W)));
   }
   const win = runWindow(r);
-  out.kv('window', `${cell(win.start)} -> ${cell(win.end)}`);
-  out.kv('wall time', humanizeDuration(r.totals.wallMs));
+  const metaLine = `run ${cell(r.meta.runId)} | window ${cell(win.start)} -> ${cell(win.end)}${
+    r.meta.generator ? ` | ${ascii(cell(r.meta.generator))}` : ''
+  }`;
+  for (const piece of wrapWords(ansi.dim(metaLine), W)) out.line(piece);
 }
 
-// ---------------------------------------------------------------------------
-// Overview KPIs
-// ---------------------------------------------------------------------------
-
-function renderOverview(out: Sink, r: RunReport): void {
+function renderKpis(out: Sink, r: RunReport, ansi: { dim(s: string): string }): void {
   const t = r.totals;
-  out.section('run overview');
-  const emit = (s: string): void => {
-    for (const piece of s.length <= W ? [s] : wrapWords(s, W)) out.line(piece);
-  };
-
-  emit(
-    `agents ${num(t.agents)} | tasks ${num(t.tasks)} | duration ${humanizeDuration(t.wallMs)}`,
-  );
-
-  let tokens = `tokens ${humanizeTokens(t.tokensTotal)} (in ${humanizeTokens(t.tokensIn)} / out ${humanizeTokens(t.tokensOut)}`;
-  if (t.cacheRead + t.cacheWrite > 0) {
-    tokens += ` / cache ${humanizeTokens(t.cacheRead + t.cacheWrite)}`;
-  }
-  tokens += ')';
-  emit(tokens);
-
-  emit(
-    `outcomes ${num(t.success)} success / ${num(t.partial)} partial / ` +
-      `${num(t.failure)} failure / ${num(t.unknown)} unknown`,
-  );
-
-  emit(`est. cost (estimated): ${formatUsd(t.costUsd)}`);
+  const items = [
+    { label: 'AGENTS', value: num(t.agents) },
+    { label: 'TASKS', value: num(t.tasks) },
+    { label: 'RUNTIME', value: humanizeDuration(t.wallMs) },
+    { label: 'TOKENS', value: humanizeTokens(t.tokensTotal) },
+    { label: 'COST', value: formatUsd(t.costUsd) },
+  ];
+  const widths = items.map((i) => Math.max(i.label.length, i.value.length));
+  out.blank();
+  out.line(ansi.dim(items.map((i, idx) => i.label.padEnd(widths[idx])).join('   ')));
+  out.line(items.map((i, idx) => i.value.padEnd(widths[idx])).join('   '));
   const notice = costNotice(t);
-  if (notice) for (const l of wrapWords(`NOTE: ${notice}`, W - 4)) emit(`  ${l}`);
+  if (notice) {
+    for (const l of wrapWords(ansi.dim(`note: ${notice}`), W)) out.line(l);
+  }
 }
 
 // ---------------------------------------------------------------------------
-// What happened: outcome rollup + fact titles (+evidence when verbose)
+// Outcomes
 // ---------------------------------------------------------------------------
 
-function renderWhatHappened(out: Sink, r: RunReport, verbose: boolean): void {
+function renderOutcomes(
+  out: Sink,
+  r: RunReport,
+  g: Glyphs,
+  ansi: { dim(s: string): string; ok(s: string): string; warn(s: string): string; fail(s: string): string },
+): void {
+  const t = r.totals;
+  if (t.tasks === 0 && t.agents === 0) return;
+  out.section('outcomes');
+  const rows: Array<{ glyph: string; text: string; paint: (s: string) => string }> = [];
+  if (t.success > 0) rows.push({ glyph: g.ok, text: `${num(t.success)} successful`, paint: ansi.ok });
+  if (t.partial > 0) rows.push({ glyph: g.warn, text: `${num(t.partial)} partial`, paint: ansi.warn });
+  if (t.failure > 0) rows.push({ glyph: g.fail, text: `${num(t.failure)} failed`, paint: ansi.fail });
+  if (t.unknown > 0) rows.push({ glyph: g.unknown, text: `${num(t.unknown)} unknown outcome`, paint: ansi.dim });
+  if (rows.length === 0) out.line(ansi.dim('no tasks recorded'));
+  for (const row of rows) out.line(`  ${row.paint(row.glyph)} ${row.text}`);
+}
+
+// ---------------------------------------------------------------------------
+// Agent performance
+// ---------------------------------------------------------------------------
+
+function renderAgents(
+  out: Sink,
+  r: RunReport,
+  g: Glyphs,
+  ansi: { dim(s: string): string },
+): void {
+  out.section('agent performance');
+  const ordered = orderAgents(r.agents);
+  if (ordered.length === 0) {
+    out.line(ansi.dim('(no agents recorded)'));
+    return;
+  }
+
+  const rows = ordered.map(({ agent: a, depth }) => {
+    const unknownTasks = Math.max(
+      0,
+      a.taskCount - a.successCount - a.failureCount - a.partialCount,
+    );
+    const modelList = cell(modelsUsed(a.models));
+    const primaryModel = modelList === '' ? '-' : tailClip(modelList.split(',')[0].trim(), 7);
+    return [
+      agentTreeLabel(cell(a.name || a.agentId), depth),
+      primaryModel,
+      `${num(a.successCount)}/${num(a.failureCount)}/${num(a.partialCount)}/${num(unknownTasks)}`,
+      `${humanizeTokens(a.tokensIn)}/${humanizeTokens(a.tokensOut)}`,
+      formatUsd(a.costUsd),
+      num(a.toolCalls),
+      `${num(a.errors)}/${num(a.retries)}`,
+      num(a.filesTouched.length),
+    ];
+  });
+  for (const l of asciiTable(
+    [
+      { h: 'AGENT', cap: 24, min: 13 },
+      { h: 'MODEL', cap: 9 },
+      { h: 'S/F/P/U', min: 7 },
+      { h: 'IN/OUT', align: 'right', cap: 14, min: 10 },
+      { h: 'COST*', align: 'right', cap: 9, min: 7 },
+      { h: 'TL', align: 'right', min: 2 },
+      { h: 'ERR/RT', align: 'right', min: 6 },
+      { h: 'FL', align: 'right', min: 2 },
+    ],
+    rows,
+  )) {
+    out.line(l);
+  }
+  out.line(ansi.dim('* estimated from built-in list prices. FL=files, TL=tool calls.'));
+
+  if (r.totals.tokensTotal > 0) {
+    out.blank();
+    out.line(ansi.dim(`token share of ${humanizeTokens(r.totals.tokensTotal)} total:`));
+    const labels = ordered.map(({ agent: a, depth }) =>
+      truncate(agentTreeLabel(cell(a.name || a.agentId), depth), 26),
+    );
+    const labelWidth = Math.max(...labels.map((l) => l.length));
+    ordered.forEach(({ agent: a }, i) => {
+      const fill = Math.min(
+        BAR_INNER,
+        Math.max(0, Math.round((a.tokensTotal / r.totals.tokensTotal) * BAR_INNER)),
+      );
+      const bar = `[${'#'.repeat(fill)}${'.'.repeat(BAR_INNER - fill)}]`;
+      out.line(
+        `${labels[i].padEnd(labelWidth)} ${bar} ${pct(a.tokensTotal, r.totals.tokensTotal)}`,
+      );
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// What happened + recommendations
+// ---------------------------------------------------------------------------
+
+function renderWhatHappened(
+  out: Sink,
+  r: RunReport,
+  g: Glyphs,
+  ansi: { dim(s: string): string; warn(s: string): string; fail(s: string): string; ok(s: string): string },
+  verbose: boolean,
+): void {
   out.section('what happened');
   const t = r.totals;
-  if (t.success > 0) out.line(`+ ${num(t.success)} task${t.success === 1 ? '' : 's'} completed`);
-  if (t.partial > 0) out.line(`! ${num(t.partial)} task${t.partial === 1 ? '' : 's'} partially completed`);
-  if (t.failure > 0) out.line(`x ${num(t.failure)} task${t.failure === 1 ? '' : 's'} failed`);
-  if (t.unknown > 0) out.line(`? ${num(t.unknown)} task${t.unknown === 1 ? '' : 's'} with unknown outcome`);
+  if (t.success > 0) out.line(`  ${ansi.ok(g.ok)} ${num(t.success)} task${t.success === 1 ? '' : 's'} completed`);
+  if (t.partial > 0) out.line(`  ${ansi.warn(g.warn)} ${num(t.partial)} task${t.partial === 1 ? '' : 's'} partially completed`);
+  if (t.failure > 0) out.line(`  ${ansi.fail(g.fail)} ${num(t.failure)} task${t.failure === 1 ? '' : 's'} failed`);
+  if (t.unknown > 0) out.line(`  ${ansi.dim(g.unknown)} ${num(t.unknown)} task${t.unknown === 1 ? '' : 's'} with unknown outcome`);
 
   const insights = sortedInsights(r);
   if (insights.length === 0) {
     if (t.tasks === 0) {
-      out.line('(nothing recorded)');
+      out.line(ansi.dim('  (nothing recorded)'));
       return;
     }
     out.blank();
-    out.line(NO_FINDINGS);
+    out.line(ansi.dim(`  ${NO_FINDINGS}`));
     return;
   }
   for (const ins of insights) {
     out.blank();
-    const marker = ins.severity === 'warn' ? '[!]' : '[i]';
-    out.line(`${marker} ${truncate(cell(ins.title), W - 5)}`);
-    labeledBlock(out, 'Observed', ins.observed);
-    if (verbose && ins.evidence.length > 0) labeledBlock(out, 'Evidence', ins.evidence.join('; '));
+    const isWarn = ins.severity === 'warn';
+    const glyph = isWarn ? g.warn : g.info;
+    const paint = isWarn ? ansi.warn : ansi.dim;
+    out.line(`  ${paint(glyph)} ${truncate(ascii(cell(ins.title)), W - 7)}`);
+    labeledBlock(out, 'Observed', ins.observed, ansi);
+    if (verbose && ins.evidence.length > 0) labeledBlock(out, 'Evidence', ins.evidence.join('; '), ansi);
   }
 }
 
 /** Wrapped prose block with hanging indent aligned under the label text. */
-function labeledBlock(out: Sink, label: string, text: string): void {
-  const prefix = `${' '.repeat(4)}${label}: `;
+function labeledBlock(
+  out: Sink,
+  label: string,
+  text: string,
+  ansi: { dim(s: string): string },
+): void {
+  const prefix = `    ${label}: `;
   const parts = wrapWords(text, W - prefix.length);
-  out.line(prefix + (parts[0] ?? '-'));
+  out.line(ansi.dim(prefix) + (parts[0] ?? '-'));
   const cont = ' '.repeat(prefix.length);
   for (let i = 1; i < parts.length; i++) out.line(cont + parts[i]);
 }
 
-// ---------------------------------------------------------------------------
-// Recommendations: clearly-labeled inferences, never presented as facts
-// ---------------------------------------------------------------------------
-
-function renderRecommendations(out: Sink, r: RunReport): void {
+function renderRecommendations(
+  out: Sink,
+  r: RunReport,
+  g: Glyphs,
+  ansi: { dim(s: string): string },
+): void {
   const recs = sortedInsights(r).filter(
     (i) => i.recommendation !== undefined && i.recommendation.trim() !== '',
   );
   if (recs.length === 0) return;
   out.section('recommendations');
   for (const ins of recs) {
-    const parts = wrapWords(ins.recommendation!.trim(), W - 4);
-    out.line(`-> ${(parts[0] ?? '').trim()}`);
-    for (let i = 1; i < parts.length; i++) out.line(`   ${parts[i]}`);
+    const parts = wrapWords(ins.recommendation!.trim(), W - 6);
+    out.line(`  ${g.arrow} ${(parts[0] ?? '').trim()}`);
+    for (let i = 1; i < parts.length; i++) out.line(`    ${parts[i]}`);
   }
 }
 
@@ -207,9 +336,7 @@ function renderRecommendations(out: Sink, r: RunReport): void {
 interface AsciiCol {
   h: string;
   align?: 'left' | 'right';
-  /** Hard cap for auto-sizing. */
   cap?: number;
-  /** Minimum width kept while shrinking (protects ids/amounts from mangling). */
   min?: number;
 }
 
@@ -268,81 +395,13 @@ function agentTreeLabel(name: string, depth: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Agents
+// Tasks / files / signals (verbose)
 // ---------------------------------------------------------------------------
 
-function renderAgents(out: Sink, r: RunReport): void {
-  out.section('agent performance');
-  const ordered = orderAgents(r.agents);
-  if (ordered.length === 0) {
-    out.line('(no agents recorded)');
-    return;
-  }
-
-  const rows = ordered.map(({ agent: a, depth }) => {
-    const unknownTasks = Math.max(
-      0,
-      a.taskCount - a.successCount - a.failureCount - a.partialCount,
-    );
-    const modelList = cell(modelsUsed(a.models));
-    const primaryModel = modelList === '' ? '-' : tailClip(modelList.split(',')[0].trim(), 7);
-    return [
-      agentTreeLabel(cell(a.name || a.agentId), depth),
-      primaryModel,
-      `${num(a.successCount)}/${num(a.failureCount)}/${num(a.partialCount)}/${num(unknownTasks)}`,
-      `${humanizeTokens(a.tokensIn)}/${humanizeTokens(a.tokensOut)}`,
-      formatUsd(a.costUsd),
-      num(a.toolCalls),
-      `${num(a.errors)}/${num(a.retries)}`,
-      num(a.filesTouched.length),
-    ];
-  });
-  for (const l of asciiTable(
-    [
-      { h: 'AGENT', cap: 24, min: 13 },
-      { h: 'MODEL', cap: 9 },
-      { h: 'S/F/P/U', min: 7 },
-      { h: 'IN/OUT', align: 'right', cap: 14, min: 10 },
-      { h: 'COST*', align: 'right', cap: 9, min: 7 },
-      { h: 'TL', align: 'right', min: 2 },
-      { h: 'ERR/RT', align: 'right', min: 6 },
-      { h: 'FL', align: 'right', min: 2 },
-    ],
-    rows,
-  )) {
-    out.line(l);
-  }
-  out.line('* estimated from built-in list prices. FL=files, TL=tool calls.');
-
-  // Token-share bars, one per agent (children indented like the table).
-  if (r.totals.tokensTotal > 0) {
-    out.blank();
-    out.line(`token share of ${humanizeTokens(r.totals.tokensTotal)} total:`);
-    const labels = ordered.map(({ agent: a, depth }) =>
-      truncate(agentTreeLabel(cell(a.name || a.agentId), depth), 26),
-    );
-    const labelWidth = Math.max(...labels.map((l) => l.length));
-    ordered.forEach(({ agent: a }, i) => {
-      const fill = Math.min(
-        BAR_INNER,
-        Math.max(0, Math.round((a.tokensTotal / r.totals.tokensTotal) * BAR_INNER)),
-      );
-      const bar = `[${'#'.repeat(fill)}${'.'.repeat(BAR_INNER - fill)}]`;
-      out.line(
-        `${labels[i].padEnd(labelWidth)} ${bar} ${pct(a.tokensTotal, r.totals.tokensTotal)}`,
-      );
-    });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Tasks
-// ---------------------------------------------------------------------------
-
-function renderTasks(out: Sink, r: RunReport): void {
+function renderTasks(out: Sink, r: RunReport, ansi: { dim(s: string): string }): void {
   out.section('tasks');
   if (r.tasks.length === 0) {
-    out.line('(no tasks recorded)');
+    out.line(ansi.dim('(no tasks recorded)'));
     return;
   }
   const agentNames = new Map(r.agents.map((a) => [a.agentId, cell(a.name || a.agentId)]));
@@ -381,19 +440,15 @@ function renderTasks(out: Sink, r: RunReport): void {
   )) {
     out.line(l);
   }
-  out.line('* estimated from built-in list prices.');
+  out.line(ansi.dim('* estimated from built-in list prices.'));
   const hidden = sorted.length - shown.length;
-  if (hidden > 0) out.line(`+${hidden} more tasks not shown.`);
+  if (hidden > 0) out.line(ansi.dim(`+${hidden} more tasks not shown.`));
 }
 
-// ---------------------------------------------------------------------------
-// Files
-// ---------------------------------------------------------------------------
-
-function renderFiles(out: Sink, r: RunReport): void {
+function renderFiles(out: Sink, r: RunReport, ansi: { dim(s: string): string }): void {
   out.section('files');
   if (r.files.length === 0) {
-    out.line('(no files recorded)');
+    out.line(ansi.dim('(no files recorded)'));
     return;
   }
   const sorted = r.files
@@ -416,15 +471,11 @@ function renderFiles(out: Sink, r: RunReport): void {
     out.line(l);
   }
   if (sorted.some((f) => f.agents.length > 1)) {
-    out.line('* touched by more than one agent (possible duplicated work)');
+    out.line(ansi.dim('* touched by more than one agent (possible duplicated work)'));
   }
   const hidden = sorted.length - shown.length;
-  if (hidden > 0) out.line(`+${hidden} more files not shown.`);
+  if (hidden > 0) out.line(ansi.dim(`+${hidden} more files not shown.`));
 }
-
-// ---------------------------------------------------------------------------
-// Engineering signals + footer
-// ---------------------------------------------------------------------------
 
 function renderSignals(out: Sink, r: RunReport): void {
   out.section('engineering signals');
@@ -445,19 +496,28 @@ function renderSignals(out: Sink, r: RunReport): void {
   for (const l of wrapWords(parts.join(' | '), W)) out.line(l);
 }
 
-function renderFooter(out: Sink, r: RunReport, verbose: boolean): void {
+// ---------------------------------------------------------------------------
+// Footer
+// ---------------------------------------------------------------------------
+
+function renderFooter(
+  out: Sink,
+  r: RunReport,
+  ansi: { dim(s: string): string },
+  verbose: boolean,
+): void {
+  out.divider();
+  const notes: string[] = [DISCLAIMER_COST, DISCLAIMER_FACTS];
+  if (verbose) notes.push(...r.warnings);
+  out.blank();
+  for (const n of notes) {
+    for (const l of wrapWords(n, W)) out.line(ansi.dim(l));
+  }
   if (verbose) {
-    out.section('notes');
-    for (const l of wrapWords(DISCLAIMER_COST, W)) out.line(l);
-    for (const l of wrapWords(DISCLAIMER_FACTS, W)) out.line(l);
     for (const w of r.warnings) {
-      for (const l of wrapWords(w, W - 2)) out.line(`- ${l}`.slice(0, W));
+      for (const l of wrapWords(w, W - 2)) out.line(ansi.dim(`- ${l}`.slice(0, W)));
     }
-  } else {
-    out.blank();
-    out.line('costs are estimates from built-in public list prices.');
-    out.line('facts come from recorded events; suggestions are rule-based inferences.');
   }
   out.blank();
-  out.line(GENERATED_BY);
+  out.line(ansi.dim(`${GENERATED_BY} | more: forge report --verbose | forge report --json`));
 }

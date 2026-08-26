@@ -3,8 +3,8 @@
 **Your agents are working. Forge tells you how well.**
 
 Forge is an open-source, CLI-first observability layer for AI coding agents. It
-watches the agents you already use, tracks their tasks, tokens, cost, errors and
-outcomes, and turns the whole run into one report.
+detects the agents on your machine, watches the work they do, and turns a run
+into one clear report — tasks, tokens, cost, errors, outcomes.
 
 ```text
 Claude Code / Codex / other agents
@@ -18,42 +18,42 @@ Claude Code / Codex / other agents
 
 Running one AI coding agent is easy to understand.
 
-Running 5, 10 or 20 agents in parallel isn't. You quickly lose track of what each
-agent actually did, how much it cost, which tasks failed, where agents duplicated
-work, and whether the swarm was worth running at all.
+Running 5, 10 or 20 in parallel isn't. You lose track of what each agent did,
+what it cost, which tasks failed, and where agents duplicated work.
 
 Forge turns the entire run into one report, in your terminal.
 
 ## What Forge gives you
 
-This is real output from `forge demo` (see below):
+Real output from `forge demo` (see below):
 
 ```text
-=== RUN OVERVIEW ===
-agents 5 | tasks 12 | duration 47m 00s
-tokens 1.2M (in 668k / out 150.4k / cache 400.8k)
-outcomes 9 success / 2 partial / 1 failure / 0 unknown
-est. cost (estimated): $10.16
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ FORGE RUN  demo-workspace · demo                                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
 
-=== WHAT HAPPENED ===
-+ 9 tasks completed
-! 2 tasks partially completed
-x 1 task failed
+AGENTS   TASKS   RUNTIME   TOKENS   COST
+5        12      47m 00s   1.2M     $10.16
 
-[!] 2 tasks required repeated retries
-[!] 1 task failed
+OUTCOMES
+  ✓ 9 successful
+  ! 2 partial
+  ✕ 1 failed
 
-=== RECOMMENDATIONS ===
--> Retry-heavy tasks usually have vague acceptance criteria - split them into
-   smaller verifiable steps next run.
+WHAT HAPPENED
+  ! 2 tasks required repeated retries
+
+RECOMMENDATIONS
+  → Retry-heavy tasks usually have vague acceptance criteria - split them into
+    smaller verifiable steps next run.
 ```
 
 Facts come from recorded events. Suggestions are rule-based inferences, always
-labeled as such. Cost figures are estimates from built-in public list prices.
+labeled as such. Costs are estimates from built-in public list prices.
 
 ## Installation
 
-Requires Node.js 18+.
+Requires Node.js 18+. No account, no API key.
 
 ```bash
 git clone https://github.com/forge-open/forge
@@ -62,8 +62,6 @@ npm install
 npm run build
 npm link
 ```
-
-Then check it works:
 
 ```bash
 forge --help
@@ -75,65 +73,38 @@ forge --help
 forge demo
 ```
 
-This creates a synthetic multi-agent run — 5 agents, 12 tasks, known tokens,
-failures and retries — and prints the full report. No API keys, no agent setup.
+That's a synthetic 5-agent run — known tokens, failures, retries — printed as a
+full report. No setup of any kind.
 
 ## Use Forge with a real run
 
-Setup differs per agent, because agents record their work differently.
+The normal workflow is two commands, ever:
 
-### Claude Code — works today, zero config
+```bash
+forge          # once, in your project: detects agents and sets up
+forge report   # whenever you want to know what happened
+```
 
+`forge` detects your agents, creates `.forge/` (it asks first), and tells you
+what to do next. `forge report` automatically imports your newest agent session,
+so you never have to think about transcripts, imports, or IDs.
+
+### Per-agent setup
+
+**Claude Code — works today, zero config.**
 Forge reads the session transcripts Claude Code already writes on your machine
-(`~/.claude/projects/`). No hooks, no wrappers.
+(`~/.claude/projects/`). No hooks, no wrappers. Work normally, then `forge report`.
 
-```text
-Claude Code (work normally)
-    ↓
-session transcript on disk
-    ↓
-forge import claude
-    ↓
-forge report
-```
+**Codex CLI — detected, native import planned.**
+Forge will tell you it detected Codex but cannot import its sessions yet. You can
+bridge the gap today by emitting Forge's generic event format
+([docs/events.md](docs/events.md)) and running `forge import jsonl <file>`.
 
-```bash
-forge init              # once per project: creates .forge/
-forge import claude     # import your most recent session here
-forge report            # print the report + write report.md and report.html
-```
+**Gemini CLI — same status as Codex.**
 
-Useful variants:
-
-```bash
-forge import claude --project C:\path\to\repo   # import another project's sessions
-forge import claude --session <id>              # one specific session
-forge import claude --all                       # up to 10 most recent sessions
-```
-
-### Codex CLI — via generic events, native adapter planned
-
-Forge cannot read Codex session files yet. Today you have two honest options:
-
-1. **Wait for the adapter** (planned — see the roadmap below).
-2. **Emit Forge events yourself.** Any tool that writes the simple JSONL schema in
-   [docs/events.md](docs/events.md) can be imported:
-
-   ```bash
-   forge import jsonl .forge/my-codex-run.jsonl
-   forge report
-   ```
-
-### Gemini CLI — same status as Codex
-
-No native adapter yet. Same path: emit the generic event format, then
-`forge import jsonl`.
-
-### OpenCode / custom harnesses / your own scripts
-
-The generic JSONL format **is** the integration boundary, and it works today.
-A dozen event kinds, one emitter function, then `forge import jsonl`.
-See [docs/events.md](docs/events.md).
+**OpenCode / custom harnesses — generic events work today.**
+The JSONL event format is the integration boundary: a dozen event kinds, one
+emitter function, then `forge import jsonl <file>`.
 
 ## View the report
 
@@ -143,8 +114,11 @@ forge report --verbose    # deeper: task table, file overlap, engineering signal
 forge report --json       # machine-readable output for scripts and CI
 ```
 
-Related commands: `forge runs` lists imported runs, `forge show` reprints a
-report without writing files, `forge open` opens the HTML report in your browser.
+Related: `forge runs` lists imported runs, `forge show` reprints a report,
+`forge open` opens the HTML file in your browser.
+
+Power users can always import explicitly:
+`forge import claude [--project <path>] [--session <id>] [--all]`.
 
 ## Where does Forge store data?
 
@@ -154,14 +128,15 @@ your-project/
     └── runs/
 ```
 
-Everything is local-first: no account, no cloud, no telemetry. Run data stays in
-your project (the `.forge/` folder is gitignored), and reports are plain files.
+Local-first: everything stays in your project (`.forge/` is gitignored), reports
+are plain files, and nothing is ever uploaded.
 
 ## What Forge currently supports
 
 ```text
 ✓ CLI-first (terminal, SSH, CI friendly)
 ✓ Local runs, no account
+✓ Agent detection (Claude Code, Codex, Gemini CLI, OpenCode)
 ✓ Claude Code transcript import
 ✓ Generic JSONL event import
 ✓ Agent / task tracking with parent-child swarm tree
@@ -170,26 +145,22 @@ your project (the `.forge/` folder is gitignored), and reports are plain files.
 ✓ Terminal, Markdown, HTML and JSON reports
 ```
 
-Not supported yet: native Codex/Gemini/OpenCode adapters, live capture while
-agents run, run-to-run comparison.
-
 ## What's next
 
-These are future directions, not current features:
+Future directions, not current features:
 
 - Native Codex CLI and Gemini CLI adapters
-- Live capture via agent hooks (no post-run import step)
+- Live capture while agents work (no report-time import)
 - Run-to-run comparison ("was this run better than the last one?")
 - Deeper optimization insights as evidence accumulates
-- CI integration examples
 
 ## Development
 
 ```bash
 npm install
-npm test          # 34/34 tests currently pass
+npm test          # 39/39 tests currently pass
 npm run build
-npm run demo      # end-to-end: synthetic run -> report
+npm run demo
 ```
 
 TypeScript, zero runtime dependencies. See [CONTRIBUTING.md](CONTRIBUTING.md)
