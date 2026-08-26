@@ -1,0 +1,14 @@
+{
+  "tasks": [
+    {
+      "prompt": "Write a hello world function",
+      "summary": "[Offline Mode / Model Endpoint Unreachable: GLM-5.2 at http://localhost:8000/v1/chat/completions]"
+    },
+    {
+      "prompt": "Refactor authentication handler",
+      "summary": "Collaborative review workflow completed."
+    }
+  ],
+  "conventions": [],
+  "architecture_notes": []
+}

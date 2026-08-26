@@ -1,0 +1,42 @@
+{
+  "name": "@forge-open/forge",
+  "version": "2.0.0-alpha.1",
+  "description": "Open-source observability and optimization layer for AI coding-agent swarms. Your agents are working. Forge tells you how well.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/forge-open/forge"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "forge": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo": "tsx scripts/demo.ts"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "observability",
+    "claude-code",
+    "codex",
+    "tokens",
+    "cost",
+    "developer-tools"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.4"
+  }
+}

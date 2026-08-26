@@ -1,21 +1,46 @@
 # Security Policy
 
-## Supported Versions
+Forge observes AI coding-agent work, so it handles potentially sensitive metadata.
+The design assumes transcripts may contain references to private code and must
+never leak.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.2.x   | :white_check_mark: |
-| < 0.2   | :x:                |
+## Threat model & guarantees
 
-## Reporting a Vulnerability
+**What Forge stores:** canonical events under `<project>/.forge/runs/` (token
+counts, tool names, task titles, file paths, timestamps) plus generated reports.
 
-If you discover a potential security vulnerability in Forge, please do not disclose it publicly on GitHub issues or pull requests.
+**What Forge never intentionally stores:** prompt/completion bodies, raw shell
+commands, API keys, environment contents. Free-text fields are truncated and
+scrubbed of common secret shapes (`sk-…`, `ghp_…`, `xox…-…`, AWS `AKIA…`) as
+defense-in-depth — adapters must not emit secrets in the first place.
 
-Instead, please report security issues directly to the core maintainers via security report or private contact.
+**Network:** the CLI makes **no network requests**. Reports are static files;
+`forge open` asks your own browser to view a local `file://`. There is no
+telemetry, no accounts, no cloud component.
 
-Include the following details in your report:
-* Type of issue (e.g. credential exposure, unsafe command execution, context leak)
-* Full steps to reproduce the issue
-* Potential impact of the vulnerability
+**HTML report:** fully self-contained, no external resources, and every dynamic
+string is HTML-escaped before rendering.
 
-We will acknowledge receipt of your vulnerability report within 48 hours and provide regular updates on our progress toward a resolution.
+## Recommendations for users
+
+- Treat `.forge/` like `.git/`: it is already excluded by this repo's `.gitignore`;
+  keep it out of archives you share. Reports can mention file paths and task
+  summaries from your runs.
+- If your agent emits custom JSONL events, sanitize free-text fields at the source.
+
+## Trust boundary notes
+
+- `.forge/` is project-local, user-writable state. Forge validates run ids and
+  meta files defensively (strict id pattern, shape-checked `meta.json`, directory
+  name is authoritative), but it does not defend against an attacker who can
+  already write arbitrary files into your project — that is outside a local
+  developer tool's threat model. Don't point Forge at untrusted projects and
+  then blindly trust planted run data.
+- `forge open` hands the report path to your OS browser launcher with no shell
+  interpretation on any platform.
+
+## Reporting a vulnerability
+
+Use GitHub's "Report a vulnerability" (Security → Advisories) on
+`forge-open/forge`. Please avoid public issues for exploitable bugs. We aim to
+respond within 7 days.
