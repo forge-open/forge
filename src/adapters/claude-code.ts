@@ -73,8 +73,17 @@ function scrub(text: string, max: number): string {
 
 function normPath(p: unknown): string | undefined {
   if (typeof p !== 'string' || p.length === 0) return undefined;
-  const normalized = p.replace(/\\/g, '/');
+  // Control characters (ANSI escapes, OSC) are stripped: paths are display data.
+  const normalized = p
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, '')
+    .replace(/\\/g, '/');
   return normalized.length > 1024 ? normalized.slice(0, 1024) : normalized;
+}
+
+/** Bounded identifier: hostile transcripts must not bloat events with huge strings. */
+function ident(v: string | undefined, max = 200): string | undefined {
+  return v === undefined ? undefined : v.length > max ? v.slice(0, max) : v;
 }
 
 function num(v: unknown): number | undefined {
@@ -267,7 +276,7 @@ class Converter {
           ts,
           kind: 'token_usage',
           agentId,
-          ...(model ? { model } : {}),
+          ...(model ? { model: ident(model) } : {}),
           ...(!sidechain && this.openMainTask ? { taskId: this.openMainTask.id } : {}),
           tokens: Object.fromEntries(Object.entries(tokens).filter(([, v]) => v !== undefined)),
         });
@@ -314,8 +323,8 @@ class Converter {
           kind: 'tool_called',
           agentId,
           ...(taskId ? { taskId } : {}),
-          tool: b.name,
-          toolCallId: b.id,
+          tool: ident(b.name),
+          toolCallId: ident(b.id),
         });
         this.pending.set(b.id, { ts, agentId, ...(taskId ? { taskId } : {}), category });
       }

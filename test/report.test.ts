@@ -429,7 +429,7 @@ test('html: every opened table is closed', () => {
 // Sparse data + determinism
 // ---------------------------------------------------------------------------
 
-test('sparse report: all three renderers produce "-" placeholders without throwing', () => {
+test('sparse report: renderers degrade gracefully and show unavailable for missing evidence', () => {
   const renderers: Array<[string, (r: RunReport) => string]> = [
     ['terminal', renderTerminal],
     ['markdown', renderMarkdown],
@@ -443,6 +443,9 @@ test('sparse report: all three renderers produce "-" placeholders without throwi
     assert.equal(typeof out, 'string');
     assert.ok(out.length > 0, `${name} produced empty output`);
     assert.ok(out.includes('-'), `${name} rendered no "-" placeholder`);
+    if (name === 'terminal') {
+      assert.ok(out.includes('unavailable'), 'terminal must show unavailable, not fake zeros');
+    }
     if (name === 'terminal') {
       assert.match(out, /^[\x20-\x7E\n\r]*$/);
       assert.ok(out.includes('(no agents recorded)'));

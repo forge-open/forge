@@ -7,7 +7,7 @@ import path from 'node:path';
 import { detectAgents } from '../src/core/detect.js';
 import { makeStyle, termCaps } from '../src/term.js';
 
-test('detect: claude-code is supported when its projects dir exists; others are presence-only', async () => {
+test('detect: claude-code and codex are supported; gemini/opencode stay presence-only', async () => {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'forge-detect-'));
   try {
     const claudeDir = path.join(tmp, 'claude-projects');
@@ -16,14 +16,23 @@ test('detect: claude-code is supported when its projects dir exists; others are 
     await fsp.writeFile(path.join(projDir, 'session-a.jsonl'), '');
     await fsp.writeFile(path.join(projDir, 'session-b.jsonl'), '');
 
+    const codexDir = path.join(tmp, 'codex-sessions', '2026', '08', '24');
+    await fsp.mkdir(codexDir, { recursive: true });
+    const meta = JSON.stringify({
+      timestamp: '2026-08-24T18:00:00.000Z',
+      type: 'session_meta',
+      payload: { session_id: 's1', cwd: 'C:\\Users\\Dhu\\Documents\\Forge' },
+    });
+    await fsp.writeFile(path.join(codexDir, 'rollout-2026-08-24T18-00-00-s1.jsonl'), meta + '\n');
+
     const home = tmp;
-    await fsp.mkdir(path.join(home, '.codex'), { recursive: true });
     await fsp.mkdir(path.join(home, '.gemini'), { recursive: true });
 
     const detections = await detectAgents({
       home,
       projectPath: 'C:\\Users\\Dhu\\Documents\\Forge',
       claudeProjectsDir: claudeDir,
+      codexSessionsDir: path.join(tmp, 'codex-sessions'),
     });
 
     const byId = new Map(detections.map((d) => [d.id, d]));
@@ -32,8 +41,9 @@ test('detect: claude-code is supported when its projects dir exists; others are 
     assert.equal(claude.sessions, 2);
 
     const codex = byId.get('codex');
-    assert.equal(codex?.supported, false, 'codex has no import adapter yet');
-    assert.ok(codex?.note && codex.note.includes('generic event interface'));
+    assert.ok(codex?.supported, 'codex has a working import adapter');
+    assert.equal(codex.sessions, 1);
+
     assert.equal(byId.get('gemini')?.supported, false);
     assert.equal(byId.has('opencode'), false, 'opencode dir was not created');
   } finally {
@@ -44,7 +54,11 @@ test('detect: claude-code is supported when its projects dir exists; others are 
 test('detect: empty environment reports nothing (never throws)', async () => {
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'forge-detect-empty-'));
   try {
-    const detections = await detectAgents({ home: tmp, claudeProjectsDir: null });
+    const detections = await detectAgents({
+      home: tmp,
+      claudeProjectsDir: null,
+      codexSessionsDir: null,
+    });
     assert.deepEqual(detections, []);
   } finally {
     await fsp.rm(tmp, { recursive: true, force: true });

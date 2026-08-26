@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 /**
- * Forge CLI  -  local-first observability for AI coding-agent swarms.
+ * Forge CLI — local-first observability for AI coding-agent swarms.
  *
- *   forge init                      create .forge/ in the current project
- *   forge import claude [flags]     import Claude Code session(s) as run(s)
- *   forge import jsonl <file...>    import canonical event JSONL as a run
- *   forge report [<run-id>]         analyze a run + write report.md/.html
- *   forge show [<run-id>]           print the terminal report
- *   forge runs                      list imported runs
- *   forge open [<run-id>]           open the HTML report in a browser
- *   forge demo                      import a synthetic demo run + report
+ *   forge                           detect agents, analyze recent activity,
+ *                                   print one report
+ *   forge [--verbose | --json]      deeper detail / machine-readable
+ *   forge report [<run-id>]         same analysis for a specific stored run
+ *   forge runs | show | open        inspect stored runs
+ *   forge import claude|codex|jsonl explicit imports (power users)
  *
  * Zero runtime dependencies. Everything stays under <project>/.forge/.
  */
@@ -27,15 +25,19 @@ import {
   ensureForgeDir,
 } from './core/store.js';
 import { detectAgents } from './core/detect.js';
-import { confirm, makeStyle, termCaps } from './term.js';
+import { makeStyle, termCaps } from './term.js';
 import { jsonlToEvents } from './adapters/jsonl.js';
 import {
   claudeTranscriptToEvents,
   discoverClaudeSessions,
   findClaudeProjectsDir,
 } from './adapters/claude-code.js';
+import {
+  codexSessionToEvents,
+  discoverCodexSessions,
+  findCodexSessionsDir,
+} from './adapters/codex.js';
 import { generateReport } from './pipeline.js';
-import { createDemoRun } from './demo.js';
 import { ascii } from './report/format.js';
 
 const VERSION = '2.0.0-alpha.1';
@@ -72,30 +74,31 @@ function parseArgs(argv: string[]): Args {
 
 const HELP = `forge ${VERSION}  -  your agents are working. Forge tells you how well.
 
-GET STARTED
-  forge                       Detect agents in this project, set up Forge,
-                              and tell you what happens next
-  forge report                Report on the latest agent run
-                              (auto-imports your newest Claude Code session)
+START
+  forge                       Detect agents, analyze their recent work in this
+                              project, and print one report
       --verbose               full detail: tasks, files, signals, notes
       --json                  machine-readable output for scripts and CI
-  forge demo                  Instant demo report from a synthetic swarm run
+      --project <path>        analyze a different project directory
 
-ALSO USEFUL
-  forge runs                  List imported runs
-  forge show [<run-id>]       Reprint a run's report without writing files
-  forge open [<run-id>]       Open the HTML report in your browser
+INSPECT
+  forge report [<run-id>]     report for a specific stored run
+  forge runs                  list stored runs
+  forge show [<run-id>]       reprint a stored report (writes nothing)
+  forge open [<run-id>]       open the HTML report in your browser
 
 ADVANCED
-  forge init                  Create .forge/ manually
-  forge import claude         Import Claude Code session transcript(s)
+  forge init                  create .forge/ manually
+  forge import claude         explicit Claude Code import
                               [--project <path>] [--session <id>] [--all]
+  forge import codex          explicit Codex CLI import (same flags)
   forge import jsonl <file...>
-                              Import canonical Forge-event JSONL (docs/events.md)
+                              generic Forge-event JSONL (docs/events.md)
   forge help | version
 
-PRICING                      Cost figures are ESTIMATES from built-in public
-                             list prices. Override in .forge/prices.json.
+NOTES                        Local-first: no account, no API key, no network.
+                             Costs are ESTIMATES from built-in public list
+                             prices; override in .forge/prices.json.
 
 DOCS                         https://github.com/forge-open/forge`;
 
@@ -129,7 +132,7 @@ async function importOneSource(
       console.error(`forge: no usable events found  -  skipping (${sourceLabel})`);
       for (const w of parsed.warnings.slice(0, 5)) console.error(`  warning: ${ascii(w)}`);
     }
-    process.exitCode = 1;
+    process.exitCode = process.exitCode || 1;
     return null;
   }
   const run = await createRun(sourceLabel, opts);
@@ -142,6 +145,10 @@ async function importOneSource(
   }
   return run.meta.runId;
 }
+
+// ---------------------------------------------------------------------------
+// explicit imports (power users)
+// ---------------------------------------------------------------------------
 
 async function cmdImportClaude(args: Args): Promise<void> {
   const projectPath = flagStr(args, 'project') ?? process.cwd();
@@ -190,6 +197,53 @@ async function cmdImportClaude(args: Args): Promise<void> {
   }
 }
 
+async function cmdImportCodex(args: Args): Promise<void> {
+  const projectPath = flagStr(args, 'project') ?? process.cwd();
+  const sessionId = flagStr(args, 'session');
+  const takeAll = args.flags.all === true;
+
+  const sessionsDir = findCodexSessionsDir();
+  if (!sessionsDir) {
+    die(
+      'no Codex CLI sessions directory found (~/.codex/sessions).\n' +
+        '  If Codex stores sessions elsewhere, set CODEX_SESSIONS_DIR.',
+    );
+  }
+
+  const sessions = await discoverCodexSessions({
+    sessionsDir,
+    ...(sessionId ? {} : { projectPath }),
+    limit: takeAll ? 10 : 50,
+  });
+  const picked = sessionId
+    ? sessions.filter((s) => s.sessionId.startsWith(sessionId))
+    : takeAll
+      ? sessions.slice(0, 10)
+      : sessions.slice(0, 1);
+
+  if (picked.length === 0) {
+    die(
+      sessionId
+        ? `no Codex session matching "${sessionId}"`
+        : `no Codex sessions found for ${projectPath}\n` +
+          '  Run Codex in this project first, or point --project at a directory that has sessions.',
+    );
+  }
+
+  for (const s of picked) {
+    console.log(`importing codex session ${ascii(s.sessionId)} ...`);
+    await importOneSource(
+      'codex',
+      () => fsp.readFile(s.filePath, 'utf8'),
+      (text) => codexSessionToEvents(text, { projectPath }),
+      {
+        project: s.project ?? projectPath,
+        generator: `codex session ${s.sessionId}`,
+      },
+    );
+  }
+}
+
 async function cmdImportJsonl(args: Args): Promise<void> {
   if (args.pos.length === 0) die('usage: forge import jsonl <file...>   (schema: docs/events.md)');
   for (const file of args.pos) {
@@ -202,126 +256,171 @@ async function cmdImportJsonl(args: Args): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// forge (bare) — detect, confirm, initialize, hand off to `forge report`
+// forge (bare) — detect agents, analyze recent activity, one report
 // ---------------------------------------------------------------------------
 
-async function cmdStart(caps: { unicode: boolean; color: boolean }): Promise<void> {
+interface SourceAdapter {
+  id: 'claude-code' | 'codex';
+  available(): boolean;
+  discoverNewest(projectPath: string): Promise<{ sessionId: string; filePath: string; project?: string } | null>;
+  import(session: { filePath: string; project?: string; sessionId: string }, projectPath: string): Promise<string | null>;
+}
+
+const SOURCES: SourceAdapter[] = [
+  {
+    id: 'claude-code',
+    available: () => findClaudeProjectsDir() !== null,
+    discoverNewest: async (projectPath) => {
+      const dir = findClaudeProjectsDir();
+      if (!dir) return null;
+      const [newest] = await discoverClaudeSessions({ projectsDir: dir, projectPath, limit: 1 });
+      return newest ?? null;
+    },
+    import: (s, projectPath) =>
+      importOneSource(
+        'claude-code',
+        () => fsp.readFile(s.filePath, 'utf8'),
+        (text) => claudeTranscriptToEvents(text, { projectPath }),
+        { project: s.project ?? projectPath, generator: `claude-code session ${s.sessionId}`, quiet: true },
+      ),
+  },
+  {
+    id: 'codex',
+    available: () => findCodexSessionsDir() !== null,
+    discoverNewest: async (projectPath) => {
+      const dir = findCodexSessionsDir();
+      if (!dir) return null;
+      const [newest] = await discoverCodexSessions({ sessionsDir: dir, projectPath, limit: 1 });
+      return newest ?? null;
+    },
+    import: (s, projectPath) =>
+      importOneSource(
+        'codex',
+        () => fsp.readFile(s.filePath, 'utf8'),
+        (text) => codexSessionToEvents(text, { projectPath }),
+        { project: s.project ?? projectPath, generator: `codex session ${s.sessionId}`, quiet: true },
+      ),
+  },
+];
+
+/** Import every supported source whose newest session is newer than the newest stored run. */
+async function autoImportNewest(projectPath: string, quiet: boolean): Promise<number> {
+  let imported = 0;
+  try {
+    const latest = await resolveRunRef('latest');
+    const latestMs = latest ? new Date(latest.createdAt).getTime() : 0;
+    for (const source of SOURCES) {
+      if (!source.available()) continue;
+      const newest = await source.discoverNewest(projectPath);
+      if (!newest) continue;
+      const st = await fsp.stat(newest.filePath);
+      if (latestMs >= st.mtimeMs) continue;
+      const runId = await source.import(newest, projectPath);
+      if (runId) {
+        imported++;
+        if (!quiet) console.log(`imported ${source.id} session ${ascii(newest.sessionId)}`);
+      }
+    }
+  } catch {
+    // Auto-import is a convenience: fall back to whatever is already stored.
+  }
+  return imported;
+}
+
+async function cmdAnalyze(args: Args): Promise<void> {
+  const caps = termCaps();
   const style = makeStyle(caps.color);
   const g = caps.unicode ? { ok: '✓', warn: '!', box: '─' } : { ok: '+', warn: '!', box: '-' };
-  const project = path.basename(process.cwd());
-  const isGitRepo = fsSync.existsSync(path.join(process.cwd(), '.git'));
+  const json = args.flags.json === true;
+  const projectPath = flagStr(args, 'project') ?? process.cwd();
+  const say = (s: string): void => {
+    if (!json) console.log(s);
+  };
 
-  console.log('');
-  if (caps.unicode) {
-    const title = 'FORGE';
-    const sub = 'observability for AI coding agents';
-    const innerPlain = `  ${title}  ${sub}`;
-    const innerStyled = `  ${title}  ${style.dim(sub)}`;
-    console.log(`╭${g.box.repeat(44)}╮`);
-    console.log(`│${innerStyled}${' '.repeat(Math.max(0, 44 - innerPlain.length))}│`);
-    console.log(`╰${g.box.repeat(44)}╯`);
-  } else {
-    console.log('FORGE  -  observability for AI coding agents');
-    console.log(style.dim(g.box.repeat(46)));
+  const project = path.basename(projectPath);
+  if (!json) {
+    console.log('');
+    if (caps.unicode) {
+      const title = 'FORGE';
+      const sub = 'your agents are working. Forge tells you how well.';
+      const innerPlain = ` ${title}  ${sub}`;
+      const innerStyled = ` ${title}  ${style.dim(sub)}`;
+      console.log(`╭${g.box.repeat(62)}╮`);
+      console.log(`│${innerStyled}${' '.repeat(Math.max(0, 62 - innerPlain.length))}│`);
+      console.log(`╰${g.box.repeat(62)}╯`);
+      console.log('');
+    }
+    console.log(`Project: ${project}`);
+    console.log('Detecting agents...');
   }
-  console.log('');
-  console.log(`Project: ${project}${isGitRepo ? style.dim(' (git repo)') : ''}`);
-  console.log('');
-  console.log('Detecting agents...');
 
-  const detections = await detectAgents({ projectPath: process.cwd() });
+  const detections = await detectAgents({ projectPath });
   const supported = detections.filter((d) => d.supported);
   const detectedUnsupported = detections.filter((d) => !d.supported);
 
   if (supported.length === 0) {
-    console.log(`${style.warn(g.warn)} No supported coding agent detected.`);
-    console.log('');
-    console.log('Forge currently supports:');
-    console.log(`  ${style.ok(g.ok)} Claude Code (session transcript import)`);
-    if (detectedUnsupported.length > 0) {
-      for (const d of detectedUnsupported) {
-        console.log(`  ${style.warn(g.warn)} ${d.name}: ${d.note ?? 'not supported yet'}`);
-      }
+    say(`${style.warn(g.warn)} No supported AI coding agent was detected.`);
+    say('');
+    say('Forge currently supports:');
+    say(`  ${style.ok(g.ok)} Claude Code`);
+    say(`  ${style.ok(g.ok)} Codex CLI`);
+    for (const d of detectedUnsupported) {
+      say(`  ${style.warn(g.warn)} ${d.name} - ${d.note ?? 'not supported yet'}`);
     }
-    console.log('');
-    console.log('Other agents can be connected through the generic event interface:');
-    console.log('  docs/events.md  ->  forge import jsonl <file>');
-    console.log('');
-    console.log(`Want to see what a report looks like?  ${style.dim('forge demo')}`);
+    say('');
+    say(`Start one of these agents in this project, give it a task,`);
+    say(`then run:  ${style.dim('forge')}`);
+    say('');
+    say(style.dim('Other agents can be connected through the generic event interface (docs/events.md).'));
     return;
   }
 
   for (const d of detections) {
     if (d.supported) {
       const sessions = d.sessions === undefined ? '' : ` - ${d.sessions} recent session${d.sessions === 1 ? '' : 's'} here`;
-      console.log(`${style.ok(g.ok)} ${d.name}${style.dim(sessions)}`);
+      say(`${style.ok(g.ok)} ${d.name}${style.dim(sessions)}`);
     } else {
-      console.log(`${style.warn(g.warn)} ${d.name}${style.dim(` - ${d.note ?? 'not supported yet'}`)}`);
+      say(`${style.warn(g.warn)} ${d.name}${style.dim(` - ${d.note ?? 'not supported yet'}`)}`);
     }
   }
-  console.log('');
-  const claude = supported.find((d) => d.id === 'claude-code');
-  const hasSessions = (claude?.sessions ?? 0) > 0;
 
-  if (!hasSessions) {
-    console.log(`No Claude Code sessions found for this project yet.`);
-    console.log(`Work with Claude Code here first - Forge will read the session it writes.`);
-    console.log('');
-    console.log(`Want to see what a report looks like right now?  ${style.dim('forge demo')}`);
-  }
-
-  const proceed = await confirm(process.stdin, 'Start observing this project?', true);
-  if (!proceed) {
-    console.log('OK - nothing was written. Run `forge` when you are ready.');
+  const totalSessions = supported.reduce((sum, d) => sum + (d.sessions ?? 0), 0);
+  if (totalSessions === 0) {
+    say('');
+    say('No recent agent activity was found for this project.');
+    const names = supported.map((d) => d.name).join(' or ');
+    say(`Run ${names} here, complete some work, then run:  ${style.dim('forge')}`);
     return;
   }
-  const root = ensureForgeDir();
-  console.log('');
-  console.log(`${style.ok(g.ok)} Forge is ready: ${style.dim(path.relative(process.cwd(), root) || root)}`);
-  console.log('');
-  console.log('Forge observes locally. No account, no API key.');
-  if (hasSessions) {
-    console.log('You already have sessions here - preview one any time:');
-  } else {
-    console.log('Continue working normally with Claude Code.');
-    console.log('When you are done:');
-  }
-  console.log(`  ${style.dim('forge report')}`);
-}
 
-/**
- * `forge report` with no explicit run id should reflect the most recent work:
- * import the newest Claude session for this project when it is newer than the
- * newest stored run (or when nothing is stored yet). Never fatal.
- */
-async function autoImportNewestSession(): Promise<void> {
-  try {
-    const projectsDir = findClaudeProjectsDir();
-    if (!projectsDir) return;
-    const latest = await resolveRunRef('latest');
-    const [newest] = await discoverClaudeSessions({ projectsDir, projectPath: process.cwd(), limit: 1 });
-    if (!newest) return;
-    const st = await fsp.stat(newest.filePath);
-    if (latest && new Date(latest.createdAt).getTime() >= st.mtimeMs) return;
-    const runId = await importOneSource(
-      'claude-code',
-      () => fsp.readFile(newest.filePath, 'utf8'),
-      (text) => claudeTranscriptToEvents(text, { projectPath: process.cwd() }),
-      {
-        project: newest.project ?? process.cwd(),
-        generator: `claude-code session ${newest.sessionId}`,
-        quiet: true,
-      },
-    );
-    if (runId) console.log(`imported claude-code session ${ascii(newest.sessionId)}`);
-  } catch {
-    // Auto-import is a convenience: fall back to the latest stored run.
+  say('');
+  say('Found recent agent activity. Analyzing...');
+  ensureForgeDir();
+  await autoImportNewest(projectPath, json);
+
+  const gen = await generateReport(undefined, {
+    writeFiles: true,
+    verbose: args.flags.verbose === true,
+    unicode: caps.unicode,
+    color: caps.color,
+  });
+  if (!gen) {
+    die('agent activity was found but could not be analyzed yet.\n  Check forge runs, or re-run after your agent finishes a task.');
   }
+  if (json) {
+    console.log(JSON.stringify(gen.report, null, 2));
+    return;
+  }
+  console.log('');
+  console.log(gen.terminal);
+  console.log('');
+  if (gen.markdownPath) console.log(`markdown: ${gen.markdownPath}`);
+  if (gen.htmlPath) console.log(`html:     ${gen.htmlPath}`);
 }
 
 async function cmdReport(args: Args): Promise<void> {
   const ref = args.pos[0];
-  if (!ref) await autoImportNewestSession();
+  if (!ref) await autoImportNewest(flagStr(args, 'project') ?? process.cwd(), args.flags.json === true);
   const json = args.flags.json === true;
   const caps = termCaps();
   const gen = await generateReport(ref, {
@@ -334,7 +433,7 @@ async function cmdReport(args: Args): Promise<void> {
     die(
       ref
         ? `no run matches "${ref}"  -  try: forge runs`
-        : 'no runs yet. Work with your agent, then run forge report again.\n  Or preview instantly: forge demo',
+        : 'no runs yet. Work with your agent in this project, then run: forge',
     );
   }
   if (json) {
@@ -369,14 +468,13 @@ async function cmdShow(args: Args): Promise<void> {
 async function cmdRuns(): Promise<void> {
   const runs = await listRuns();
   if (runs.length === 0) {
-    console.log('no runs yet.');
-    console.log('try: forge import claude   (after running Claude Code here)');
-    console.log('or:  forge demo            (synthetic example, zero setup)');
+    console.log('no stored runs yet.');
+    console.log(`work with your agent in this project, then run:  forge`);
     return;
   }
-  console.log('RUN ID              SOURCE        EVENTS  PROJECT / CREATED');
+  console.log('RUN ID               SOURCE        EVENTS  PROJECT / CREATED');
   for (const r of runs.slice(0, 30)) {
-    const proj = r.project ? r.project : '-';
+    const proj = r.project ? ascii(r.project) : '-';
     const when = r.createdAt.slice(0, 16).replace('T', ' ');
     console.log(
       `${r.runId.padEnd(21)}${r.source.padEnd(14)}${String(r.eventCount).padStart(6)}  ${proj} | ${when}`,
@@ -416,34 +514,28 @@ async function cmdOpen(args: Args): Promise<void> {
   console.log(`opened: ${htmlPath}`);
 }
 
-async function cmdDemo(caps: { unicode: boolean; color: boolean }): Promise<void> {
-  const created = await createDemoRun();
-  console.log(`run ${created.meta.runId} created (synthetic demo swarm)`);
-  const gen = await generateReport(created.meta.runId, {
-    writeFiles: true,
-    unicode: caps.unicode,
-    color: caps.color,
-  });
-  if (!gen) die('internal error: demo run vanished');
-  console.log('');
-  console.log(gen.terminal);
-  console.log('');
-  if (gen.htmlPath) console.log(`html:     ${gen.htmlPath}`);
-  if (gen.markdownPath) console.log(`markdown: ${gen.markdownPath}`);
-}
-
 // ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
 
 async function main(argv: string[]): Promise<void> {
-  const [cmd, ...rest] = argv;
+  let cmd: string | undefined = argv[0];
+  let rest = argv.slice(1);
+  // `forge --verbose` / `forge --json` / `forge --project <path>`: leading flags
+  // belong to the default analyze command, not an unknown subcommand.
+  if (cmd !== undefined && cmd.startsWith('--')) {
+    rest = argv;
+    cmd = undefined;
+  }
   const args = parseArgs(rest);
-  const caps = termCaps();
-  switch (cmd ?? 'start') {
+  switch (cmd ?? 'analyze') {
+    case 'analyze':
     case 'start':
     case 'setup':
-      await cmdStart(caps);
+      await cmdAnalyze(args);
+      break;
+    case 'report':
+      await cmdReport(args);
       break;
     case 'init': {
       const root = ensureForgeDir();
@@ -454,24 +546,19 @@ async function main(argv: string[]): Promise<void> {
     case 'import': {
       const sub = args.pos.shift();
       if (sub === 'claude') await cmdImportClaude(args);
+      else if (sub === 'codex') await cmdImportCodex(args);
       else if (sub === 'jsonl') await cmdImportJsonl(args);
-      else die('usage: forge import claude|jsonl ...');
+      else die('usage: forge import claude|codex|jsonl ...');
       break;
     }
-    case 'report':
-      await cmdReport(args);
+    case 'runs':
+      await cmdRuns();
       break;
     case 'show':
       await cmdShow(args);
       break;
-    case 'runs':
-      await cmdRuns();
-      break;
     case 'open':
       await cmdOpen(args);
-      break;
-    case 'demo':
-      await cmdDemo(caps);
       break;
     case 'help':
     case '--help':

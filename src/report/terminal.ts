@@ -151,15 +151,16 @@ function renderKpis(out: Sink, r: RunReport, ansi: { dim(s: string): string }): 
     { label: 'AGENTS', value: num(t.agents) },
     { label: 'TASKS', value: num(t.tasks) },
     { label: 'RUNTIME', value: humanizeDuration(t.wallMs) },
-    { label: 'TOKENS', value: humanizeTokens(t.tokensTotal) },
-    { label: 'COST', value: formatUsd(t.costUsd) },
+    // Missing evidence is "unavailable", never a fabricated zero.
+    { label: 'TOKENS', value: t.tokensTotal > 0 ? humanizeTokens(t.tokensTotal) : 'unavailable' },
+    { label: 'COST', value: t.costUsd !== undefined ? formatUsd(t.costUsd) : 'unavailable' },
   ];
   const widths = items.map((i) => Math.max(i.label.length, i.value.length));
   out.blank();
   out.line(ansi.dim(items.map((i, idx) => i.label.padEnd(widths[idx])).join('   ')));
   out.line(items.map((i, idx) => i.value.padEnd(widths[idx])).join('   '));
   const notice = costNotice(t);
-  if (notice) {
+  if (notice && t.tokensTotal > 0) {
     for (const l of wrapWords(ansi.dim(`note: ${notice}`), W)) out.line(l);
   }
 }
@@ -305,7 +306,8 @@ function labeledBlock(
   ansi: { dim(s: string): string },
 ): void {
   const prefix = `    ${label}: `;
-  const parts = wrapWords(text, W - prefix.length);
+  // Insight text embeds run data (paths, titles): strip control/ANSI bytes.
+  const parts = wrapWords(ascii(text), W - prefix.length);
   out.line(ansi.dim(prefix) + (parts[0] ?? '-'));
   const cont = ' '.repeat(prefix.length);
   for (let i = 1; i < parts.length; i++) out.line(cont + parts[i]);
@@ -515,7 +517,7 @@ function renderFooter(
   }
   if (verbose) {
     for (const w of r.warnings) {
-      for (const l of wrapWords(w, W - 2)) out.line(ansi.dim(`- ${l}`.slice(0, W)));
+      for (const l of wrapWords(ascii(w), W - 2)) out.line(ansi.dim(`- ${l}`.slice(0, W)));
     }
   }
   out.blank();

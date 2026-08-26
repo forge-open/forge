@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { discoverClaudeSessions, findClaudeProjectsDir } from '../adapters/claude-code.js';
+import { discoverCodexSessions, findCodexSessionsDir } from '../adapters/codex.js';
 
 /**
  * Agent detection registry.
@@ -29,10 +30,12 @@ export interface AgentDetection {
 export interface DetectOptions {
   /** Override home dir (tests). Default: os.homedir() */
   home?: string;
-  /** Project path used to count that project's Claude sessions. Default: cwd */
+  /** Project path used to count that project's sessions. Default: cwd */
   projectPath?: string;
   /** Override the Claude Code projects dir (tests). Default: auto-discovered. */
   claudeProjectsDir?: string | null;
+  /** Override the Codex sessions dir (tests). Default: auto-discovered. */
+  codexSessionsDir?: string | null;
 }
 
 export async function detectAgents(opts: DetectOptions = {}): Promise<AgentDetection[]> {
@@ -55,14 +58,21 @@ export async function detectAgents(opts: DetectOptions = {}): Promise<AgentDetec
   }
 
   const has = (...p: string[]): boolean => fs.existsSync(path.join(home, ...p));
-  if (has('.codex')) {
-    out.push({
-      id: 'codex',
-      name: 'Codex CLI',
-      supported: false,
-      note: 'native import is not available yet - connect it via the generic event interface (docs/events.md)',
-    });
+
+  const codexDir =
+    'codexSessionsDir' in opts ? opts.codexSessionsDir : findCodexSessionsDir();
+  if (typeof codexDir === 'string' && codexDir !== '' && fs.existsSync(codexDir)) {
+    let sessions: number | undefined;
+    try {
+      sessions = (
+        await discoverCodexSessions({ sessionsDir: codexDir, projectPath, limit: 50 })
+      ).length;
+    } catch {
+      sessions = undefined;
+    }
+    out.push({ id: 'codex', name: 'Codex CLI', supported: true, sessions });
   }
+
   if (has('.gemini')) {
     out.push({
       id: 'gemini',

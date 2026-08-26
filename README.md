@@ -3,113 +3,99 @@
 **Your agents are working. Forge tells you how well.**
 
 An open-source, CLI-first observability layer for AI coding agents. Forge detects
-the agents on your machine, records what they actually do, and turns a run into
-one clear report — tasks, tokens, cost, errors, outcomes.
+Claude Code and Codex CLI on your machine, analyzes their real work locally, and
+gives you one report: tasks, tokens, cost, failures, retries, outcomes, and what
+to change next run.
 
 ```text
-Claude Code / Codex / other agents
-              ↓
-            Forge
-              ↓
-      One clear report
+Claude Code / Codex CLI
+          ↓
+        Forge
+          ↓
+    One clear report
 ```
 
-## Why
-
-One agent is easy to keep track of. Five or ten running in parallel aren't: what
-did each one do, what did it cost, which tasks failed, where did work get
-duplicated? Forge answers that from recorded evidence, not vibes — in your
-terminal, with no account and nothing leaving your machine.
-
-## Quick start
-
-> [!TIP]
-> No agents or API keys needed for a first look — `forge demo` prints a full
-> report from a synthetic 5-agent run.
+## Install
 
 ```bash
-git clone https://github.com/forge-open/forge
-cd forge
-npm install && npm run build && npm link
-forge demo
-```
-
-Real output:
-
-```text
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ FORGE RUN  demo-workspace · demo                                             │
-╰──────────────────────────────────────────────────────────────────────────────╯
-
-AGENTS   TASKS   RUNTIME   TOKENS   COST
-5        12      47m 00s   1.2M     $10.16
-
-OUTCOMES
-  ✓ 9 successful
-  ! 2 partial
-  ✕ 1 failed
-
-WHAT HAPPENED
-  ! 2 tasks required repeated retries
-    Observed: Task "Flaky e2e suite stabilization attempts" (t06) hit 5 retries
-              and 0 errors. 1 further task(s) also exceeded 3 combined
-              retries/errors.
-
-RECOMMENDATIONS
-  → Retry-heavy tasks usually have vague acceptance criteria - split them into
-    smaller verifiable steps next run.
-```
-
-## Using it for real
-
-Two commands, ever:
-
-```bash
-forge          # in your project: detects agents, asks once, sets up
-forge report   # what happened lately? (auto-imports the newest session)
-```
-
-`forge report` reads your agent's local session data, so you never touch
-transcripts, imports, or IDs. Work normally; report when you're curious.
-
-```bash
-forge report --verbose    # + task table, file overlap, engineering signals
-forge report --json       # machine-readable, for scripts and CI
-forge runs                # list imported runs
-forge open                # open the HTML report in a browser
-```
-
-### Agent support
-
-| Agent        | Status                                              |
-| ------------ | --------------------------------------------------- |
-| Claude Code  | ✅ Works today — reads local session transcripts     |
-| Codex CLI    | ⚠️ Detected, native import planned                   |
-| Gemini CLI   | ⚠️ Detected, native import planned                   |
-| OpenCode     | ⚠️ Detected, native import planned                   |
-
-Unsupported agents can still be wired up today through Forge's generic event
-format — a dozen JSONL event kinds, one emitter function
-([docs/events.md](docs/events.md)):
-
-```bash
-forge import jsonl .forge/my-agent-run.jsonl
+npx @forge-open/forge
 ```
 
 > [!NOTE]
-> Power users can always import explicitly:
-> `forge import claude --project <path> --session <id> --all`.
+> The package is not published to npm yet. Until it is, build from source:
+>
+> ```bash
+> git clone https://forge-open/forge && cd forge
+> npm install && npm run build && npm link
+> ```
+>
+> (Requires Node.js 18+. The `forge` npm name is taken by an unrelated package —
+> `@forge-open/forge` is the official one.)
 
-## What's in a report
+## Use it
 
-- **Run overview** — agents, tasks, runtime, tokens, estimated cost, outcomes
-- **Agent performance** — per-agent success rate, tokens/cost, tools, retries,
-  and the parent/child swarm tree
-- **What happened** — findings with the numbers they're based on
-- **Recommendations** — rule-based suggestions, always separated from facts
+Run it in the project where your agent is working:
 
-Costs are estimates from a built-in public price table, overridable in
-`.forge/prices.json`; unknown models render as unknown rather than guessed.
+```bash
+cd my-project
+npx @forge-open/forge
+```
+
+That's it. Forge detects your agents, finds their recent sessions, analyzes the
+real activity, and prints the report. No config, no adapters to pick, no account,
+no API key — everything stays on your machine.
+
+Real example, captured from an actual Codex session (project name elided):
+
+```text
+Project: minutz
+Detecting agents...
++ Claude Code - 0 recent sessions here
++ Codex CLI - 16 recent sessions here
+
+Found recent agent activity. Analyzing...
+imported codex session rollout-2026-05-31T...
+
+AGENTS   TASKS   RUNTIME   TOKENS   COST
+1        12      2h 01m    24.9M    $18.06
+
+OUTCOMES
+  + 12 successful
+
+WHAT HAPPENED
+  · Long-running task: 6x the median
+```
+
+Missing evidence is shown as `unavailable`, never as a fake zero. Costs are
+estimates from a built-in public price table (overridable in
+`.forge/prices.json`); unknown pricing renders as unknown.
+
+## Report modes
+
+```bash
+npx @forge-open/forge --verbose    # + task table, file overlap, signals, notes
+npx @forge-open/forge --json       # machine-readable, for scripts and CI
+npx @forge-open/forge report       # report for a specific stored run
+```
+
+Also available: `runs` (list stored runs), `show` (reprint without writing),
+`open` (HTML report in your browser), and explicit imports for power users
+(`import claude`, `import codex`, `import jsonl` — see
+[docs/events.md](docs/events.md) for the generic event format other agents can
+emit today).
+
+## Agent support
+
+| Agent        | Analysis                          |
+| ------------ | --------------------------------- |
+| Claude Code  | ✅ Native adapter — works today    |
+| Codex CLI    | ✅ Native adapter — works today    |
+| Gemini CLI   | Planned                           |
+| OpenCode     | Planned                           |
+
+Detection and analysis are different things: Forge can *see* other agents but
+only reports what it can actually analyze. If a field is unavailable from a
+source, Forge says `unavailable` — it never invents data.
 
 ## Where data lives
 
@@ -120,36 +106,25 @@ your-project/
 ```
 
 Local-first: run data stays in your project (gitignored), reports are plain
-files, and Forge makes zero network calls.
-
-## Current capabilities
-
-- CLI-first: terminal, SSH and CI friendly, ASCII fallback for any terminal
-- Claude Code transcript import + generic JSONL event import
-- Agent/task tracking with parent-child swarm tree
-- Token tracking and cost estimation
-- Errors, retries, file changes, commits, test/build signals
-- Terminal, Markdown, HTML and JSON reports
-
-Not here yet: native Codex/Gemini/OpenCode adapters, live capture while agents
-work, run-to-run comparison.
+files, and the CLI makes zero network calls.
 
 ## Roadmap
 
-- Native Codex CLI and Gemini CLI adapters
-- Live capture via agent hooks (no report-time import)
+- Gemini CLI and OpenCode adapters
+- Live capture while agents work
 - Run-to-run comparison ("was this run better than the last one?")
 - Deeper optimization insights as evidence accumulates
 
 ## Development
 
 ```bash
+git clone https://github.com/forge-open/forge && cd forge
 npm install
-npm test          # 39/39 tests currently pass
+npm test          # 45/45 tests currently pass
 npm run build
-npm run demo      # end-to-end: synthetic swarm run -> report
 ```
 
-TypeScript, zero runtime dependencies. Curious why the repo contains a `legacy/`
-Python harness? [RESET.md](RESET.md) tells the story of the pivot from agent
-runtime to observability layer.
+TypeScript, zero runtime dependencies. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Curious why the repo contains a `legacy/` Python harness?
+[RESET.md](RESET.md) tells the story of the pivot from agent runtime to
+observability layer.
