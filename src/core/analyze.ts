@@ -230,6 +230,9 @@ export function analyzeRun(meta: RunMeta, events: ForgeEvent[], prices?: PriceTa
       }
       if (task) task.toolCalls++;
     }
+    if (ev.kind === 'tool_finished') {
+      toolFinishedCount++;
+    }
     if (ev.kind === 'token_usage') {
       if (!ev.model) tokenUsageWithoutModel++;
       attributeTokens(ev, { agent, task });

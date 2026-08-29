@@ -306,7 +306,7 @@ test('adapter: two clean turns produce two successful tasks with per-model token
     line({ timestamp: T(1, 3), type: 'event_msg', payload: { type: 'task_started', turn_id: 'b' } }),
     line({
       timestamp: T(1, 4), type: 'response_item',
-      payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<user_instructions>AGENTS.md content' }] },
+      payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'second thing' }] },
     }),
     line({
       timestamp: T(2), type: 'event_msg',
@@ -321,11 +321,9 @@ test('adapter: two clean turns produce two successful tasks with per-model token
   assert.equal(starts.length, 2);
   assert.equal(finishes.length, 2);
   assert.equal(starts[0].taskId, 't1');
-  // the prompt arrived just after task_started and was backfilled onto t1
   assert.equal(starts[0].taskTitle, 'first thing');
-  // turn b only received an injected instructions block -> never retitled,
-  // and the earlier prompt cannot resurface as a stale title
-  assert.equal(starts[1].taskTitle, 'untitled turn');
+  assert.equal(starts[1].taskId, 't2');
+  assert.equal(starts[1].taskTitle, 'second thing');
   assert.ok(finishes.every((f) => f.status === 'success'));
   assert.equal(finishes[0].durationMs, 1000);
   assert.equal(finishes[1].durationMs, undefined); // older builds lack duration_ms
@@ -342,6 +340,47 @@ test('adapter: two clean turns produce two successful tasks with per-model token
     'm-1': { in: 10, out: 5, cache: 0 },
     'm-2': { in: 20, out: 7, cache: 3 },
   });
+});
+
+test('adapter: injected instructions and session resume are filtered out from user tasks', () => {
+  const transcript = [
+    line({ timestamp: T(0), type: 'session_meta', payload: { cwd: 'C:\\x', cli_version: '0.149.1' } }),
+    line({
+      timestamp: T(0, 1),
+      type: 'response_item',
+      payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '# AGENTS.md instructions for D:\\investable <INSTRUCTIONS>...' }] },
+    }),
+    line({
+      timestamp: T(0, 2),
+      type: 'response_item',
+      payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'codex resume 01a03e3d-d67e-7c23-91ac-f7ab06ab608c' }] },
+    }),
+    line({
+      timestamp: T(0, 3),
+      type: 'response_item',
+      payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<user_instructions>some system prompt' }] },
+    }),
+    line({
+      timestamp: T(0, 4),
+      type: 'response_item',
+      payload: { type: 'function_call', call_id: 'c1', name: 'exec_command', arguments: '{"cmd":"npm test"}' },
+    }),
+    line({
+      timestamp: T(0, 5),
+      type: 'response_item',
+      payload: { type: 'function_call_output', call_id: 'c1', output: 'ok' },
+    }),
+    line({
+      timestamp: T(0, 6),
+      type: 'response_item',
+      payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Refactor authentication service' }] },
+    }),
+  ].join('\n');
+
+  const res = codexSessionToEvents(transcript);
+  const starts = byKind(res.events, 'task_started');
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0].taskTitle, 'Refactor authentication service');
 });
 
 test('discovery: finds rollout files newest-first in YYYY/MM/DD tree and filters by projectPath', async () => {

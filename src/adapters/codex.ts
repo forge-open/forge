@@ -165,7 +165,7 @@ function safeJsonParse(text: unknown): Record<string, unknown> | null {
  * plugin ads, pasted-image placeholders) — observed leading tags across the
  * corpus. They never represent user work.
  */
-const INJECTED_TAG_RE = /^\s*<([A-Za-z][A-Za-z0-9_-]*)[>\n]/;
+const INJECTED_TAG_RE = /^\s*<([A-Za-z][A-Za-z0-9_-]*)[>\n\s]/;
 const INJECTED_TAGS = new Set([
   'environment_context',
   'user_instructions',
@@ -174,25 +174,88 @@ const INJECTED_TAGS = new Set([
   'recommended_plugins',
   'app_context',
   'image',
+  'skills_instructions',
+  'permissions',
+  'permissions instructions',
+  'collaboration_mode',
+  'apps_instructions',
+  'plugins_instructions',
+  'system_instructions',
 ]);
 
-/** Extract changed paths from a patch body (raw or embedded in JS source). */
-function extractPatchFiles(input: string): string[] {
-  // Newest builds embed the patch inside a JS string literal where newlines
-  // are "\n" escape sequences; unescaping them makes both forms uniform.
+export function isUserTaskPrompt(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  const injected = INJECTED_TAG_RE.exec(trimmed.slice(0, 80));
+  if (injected && INJECTED_TAGS.has(injected[1])) return false;
+
+  if (/^#?\s*AGENTS\.md/i.test(trimmed) || trimmed.includes('<INSTRUCTIONS>')) return false;
+  if (/^codex\s+resume\b/i.test(trimmed) || /^resume\s+[0-9a-f-]+/i.test(trimmed)) return false;
+  if (/^Environment discovery\b/i.test(trimmed) || /^Initial workspace scan\b/i.test(trimmed)) return false;
+
+  return true;
+}
+
+/** Extract changed paths from a patch body or diff header. */
+export function extractPatchFiles(input: string): string[] {
   const text = input.includes('\\n') ? input.replace(/\\n/g, '\n') : input;
   const files: string[] = [];
-  // Line-by-line with a cheap substring pre-filter: a global multiline regex
-  // over a hostile multi-MB body can backtrack quadratically.
-  const re = /^[ \t]{0,8}\*\*\* (?:Add|Update|Delete) File:[ \t]*(.+)$/;
+  const starRe = /^[ \t]{0,8}\*\*\* (?:Add|Update|Delete) File:[ \t]*(.+)$/;
+  const diffRe = /^[ \t]{0,8}diff --git a\/(.+) b\/(.+)$/;
+  const plusRe = /^[ \t]{0,8}\+\+\+ (?:b\/)?(.+)$/;
+
   for (const line of text.split('\n')) {
     if (files.length >= 200) break;
-    if (!line.includes('*** ')) continue;
-    const m = re.exec(line);
-    if (!m) continue;
-    const f = normPath(m[1]?.trim());
-    if (f) files.push(f);
+    if (!line.includes('*** ') && !line.includes('diff --git') && !line.includes('+++ ')) continue;
+
+    let m = starRe.exec(line);
+    if (m?.[1]) {
+      const f = normPath(m[1].trim());
+      if (f) files.push(f);
+      continue;
+    }
+    m = diffRe.exec(line);
+    if (m?.[2]) {
+      const f = normPath(m[2].trim());
+      if (f) files.push(f);
+      continue;
+    }
+    m = plusRe.exec(line);
+    if (m?.[1] && m[1] !== '/dev/null') {
+      const f = normPath(m[1].trim());
+      if (f) files.push(f);
+      continue;
+    }
   }
+  return [...new Set(files)].slice(0, 100);
+}
+
+export function extractFilePathsFromToolCall(name: string, payloadInputOrArgs: unknown): string[] {
+  const files: string[] = [];
+
+  if (typeof payloadInputOrArgs === 'object' && payloadInputOrArgs !== null) {
+    const obj = payloadInputOrArgs as Record<string, unknown>;
+    for (const key of ['path', 'file_path', 'filepath', 'file', 'target_file', 'filename']) {
+      const p = normPath(obj[key]);
+      if (p) files.push(p);
+    }
+    if (typeof obj.patch === 'string') {
+      files.push(...extractPatchFiles(obj.patch));
+    }
+    if (typeof obj.input === 'string') {
+      files.push(...extractPatchFiles(obj.input));
+    }
+  }
+
+  if (typeof payloadInputOrArgs === 'string') {
+    const parsed = safeJsonParse(payloadInputOrArgs);
+    if (parsed) {
+      files.push(...extractFilePathsFromToolCall(name, parsed));
+    }
+    files.push(...extractPatchFiles(payloadInputOrArgs));
+  }
+
   return [...new Set(files)].slice(0, 100);
 }
 
@@ -227,6 +290,7 @@ interface OpenTask {
   id: string;
   turnId?: string;
   errors: number;
+  durationMs?: number;
   /** Already-pushed task_started event; title may be backfilled when the prompt arrives later. */
   startEvent: ForgeEvent;
 }
@@ -277,37 +341,61 @@ class Converter {
 
   private closeOpenTask(ts: string, durationMs?: number): void {
     if (!this.open) return;
-    if (this.open.startEvent.taskTitle === undefined) this.open.startEvent.taskTitle = 'untitled turn';
+    const dur = durationMs ?? this.open.durationMs;
     this.emit({
       ts,
       kind: 'task_finished',
       agentId: this.agentId,
       taskId: this.open.id,
       status: this.open.errors > 0 ? 'partial' : 'success',
-      ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(dur !== undefined ? { durationMs: dur } : {}),
     });
     this.open = null;
   }
 
-  private beginTask(ts: string, turnId: string | undefined): void {
-    this.closeOpenTask(ts);
+  private ensureTask(ts: string): OpenTask {
+    if (this.open) return this.open;
     this.taskCounter++;
     const taskId = `t${this.taskCounter}`;
-    const title = this.pendingTitle;
+    const title = this.pendingTitle ?? '1 inferred task';
     this.pendingTitle = undefined;
     const startEvent: ForgeEvent = {
       ts,
       kind: 'task_started',
       agentId: this.agentId,
       taskId,
-      taskTitle: title ?? 'untitled turn',
+      taskTitle: title,
     };
     this.emit(startEvent);
-    this.open = { id: taskId, ...(turnId ? { turnId } : {}), errors: 0, startEvent };
+    this.open = { id: taskId, errors: 0, startEvent };
+    return this.open;
+  }
+
+  private startUserTask(ts: string, promptText: string): void {
+    const title = scrub(promptText.trim(), 120);
+    if (this.open && (this.open.startEvent.taskTitle === '1 inferred task' || this.open.startEvent.taskTitle === 'untitled turn')) {
+      this.open.startEvent.taskTitle = title;
+      this.pendingTitle = undefined;
+      return;
+    }
+    this.closeOpenTask(ts);
+    this.taskCounter++;
+    const taskId = `t${this.taskCounter}`;
+    const startEvent: ForgeEvent = {
+      ts,
+      kind: 'task_started',
+      agentId: this.agentId,
+      taskId,
+      taskTitle: title,
+    };
+    this.emit(startEvent);
+    this.open = { id: taskId, errors: 0, startEvent };
+    this.pendingTitle = undefined;
   }
 
   private emitRetry(ts: string, rawError: string): void {
     this.ensureStarted(ts);
+    this.ensureTask(ts);
     this.emit({ ts, kind: 'retry', agentId: this.agentId, error: scrub(rawError, 200) });
     if (this.open) this.open.errors++;
   }
@@ -327,12 +415,13 @@ class Converter {
       return;
     }
     this.ensureStarted(ts);
+    const task = this.ensureTask(ts);
     this.emit({
       ts,
       kind: 'token_usage',
       agentId: this.agentId,
       ...(this.model ? { model: ident(this.model) } : {}),
-      ...(this.open ? { taskId: this.open.id } : {}),
+      taskId: task.id,
       tokens,
     });
   }
@@ -344,30 +433,31 @@ class Converter {
     category: CallCategory,
     files?: string[],
   ): void {
-    const taskId = this.open?.id;
     this.ensureStarted(ts);
+    const task = this.ensureTask(ts);
+    const taskId = task.id;
     if (category === 'commit') {
-      this.emit({ ts, kind: 'commit_created', agentId: this.agentId, ...(taskId ? { taskId } : {}) });
+      this.emit({ ts, kind: 'commit_created', agentId: this.agentId, taskId });
     } else if (category === 'test' || category === 'build') {
       this.emit({
         ts,
         kind: category === 'test' ? 'test_started' : 'build_started',
         agentId: this.agentId,
-        ...(taskId ? { taskId } : {}),
+        taskId,
       });
     }
     if (files && files.length > 0) {
-      this.emit({ ts, kind: 'file_changed', agentId: this.agentId, ...(taskId ? { taskId } : {}), files });
+      this.emit({ ts, kind: 'file_changed', agentId: this.agentId, taskId, files });
     }
     this.emit({
       ts,
       kind: 'tool_called',
       agentId: this.agentId,
-      ...(taskId ? { taskId } : {}),
+      taskId,
       tool: ident(name),
       toolCallId: ident(callId),
     });
-    this.pending.set(callId, { ts, ...(taskId ? { taskId } : {}), category });
+    this.pending.set(callId, { ts, taskId, category });
   }
 
   private finishToolCall(ts: string, callId: string, output: unknown): void {
@@ -377,8 +467,6 @@ class Converter {
       this.note('response_item/*_call_output(unmatched)');
       return;
     }
-    // Outputs carry no error flag in any observed version; honor one if a
-    // future build adds it, otherwise fall back to correlation evidence.
     let failed = false;
     const parsed = safeJsonParse(output);
     if (parsed && (parsed.is_error === true || typeof parsed.error === 'string')) failed = true;
@@ -416,25 +504,14 @@ class Converter {
             this.note('response_item/message(user-empty)');
             return;
           }
-          const injected = INJECTED_TAG_RE.exec(text.slice(0, 80));
-          if (injected && INJECTED_TAGS.has(injected[1])) {
+          if (!isUserTaskPrompt(text)) {
             this.note('response_item/message(user-injected)');
             return;
           }
-          // Real prompt: supplies the title for the current or next turn.
           this.ensureStarted(ts);
-          const title = scrub(text.trim(), 120);
-          if (this.open && this.open.startEvent.taskTitle === 'untitled turn') {
-            // The prompt belongs to the already-open turn; consume it entirely
-            // so it cannot resurface as a stale title on the following task.
-            this.open.startEvent.taskTitle = title;
-            this.pendingTitle = undefined;
-          } else {
-            this.pendingTitle = title;
-          }
+          this.startUserTask(ts, text);
           return;
         }
-        // assistant / developer messages carry no usage or tool data we need.
         this.note(`response_item/message(${role ?? 'unknown'})`);
         return;
       }
@@ -445,16 +522,16 @@ class Converter {
           this.note('response_item/function_call(malformed)');
           return;
         }
-        const args = safeJsonParse(payload.arguments) ?? {};
-        // shell_command passes {command: string}; tolerate array form too.
-        const rawCmd = args.command;
+        const args = safeJsonParse(payload.arguments) ?? payload.arguments;
+        const files = extractFilePathsFromToolCall(name, args);
+        const rawCmd = typeof args === 'object' && args !== null ? (args as Record<string, unknown>).command : undefined;
         const cmd =
           typeof rawCmd === 'string'
             ? rawCmd
             : Array.isArray(rawCmd)
               ? rawCmd.filter((c): c is string => typeof c === 'string').join(' ')
               : '';
-        this.beginToolCall(ts, callId, name, cmd ? this.classifyCommand(cmd) : 'plain');
+        this.beginToolCall(ts, callId, name, cmd ? this.classifyCommand(cmd) : 'plain', files.length > 0 ? files : undefined);
         return;
       }
       case 'custom_tool_call': {
@@ -464,13 +541,8 @@ class Converter {
           this.note('response_item/custom_tool_call(malformed)');
           return;
         }
-        const input = typeof payload.input === 'string' ? payload.input : '';
-        let files: string[] | undefined;
-        const looksLikePatch = name === 'apply_patch' || FILE_HEADER_RE.test(input.replace(/\\n/g, '\n'));
-        if (looksLikePatch && input.length > 0) {
-          files = extractPatchFiles(input);
-        }
-        this.beginToolCall(ts, callId, name, 'plain', files && files.length > 0 ? files : undefined);
+        const files = extractFilePathsFromToolCall(name, payload.input);
+        this.beginToolCall(ts, callId, name, 'plain', files.length > 0 ? files : undefined);
         return;
       }
       case 'function_call_output':
@@ -498,12 +570,16 @@ class Converter {
     const pt = str(payload.type) ?? 'unknown';
     switch (pt) {
       case 'task_started':
-        this.beginTask(ts, str(payload.turn_id));
+        // event_msg/task_started marks LLM turn boundaries in Codex CLI.
+        // We do NOT open a new user task for internal turn boundaries unless a real prompt arrived.
         return;
-      case 'task_complete':
-        // Ordering guarantees completion closes the currently open turn.
-        this.closeOpenTask(ts, num(payload.duration_ms));
+      case 'task_complete': {
+        const dur = num(payload.duration_ms);
+        if (dur !== undefined && this.open) {
+          this.open.durationMs = (this.open.durationMs ?? 0) + dur;
+        }
         return;
+      }
       case 'token_count':
         this.handleTokenCount(ts, payload);
         return;
@@ -528,9 +604,6 @@ class Converter {
         return;
       }
       default:
-        // agent_message/agent_reasoning/user_message duplicate response_items;
-        // item_completed/thread_*/context_compacted/web_search_end/
-        // dynamic_tool_* are UI telemetry with no canonical counterpart.
         this.note(`event_msg/${pt}`);
     }
   }
