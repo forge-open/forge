@@ -40,7 +40,7 @@ import {
 import { generateReport } from './pipeline.js';
 import { ascii } from './report/format.js';
 
-const VERSION = '2.0.0-alpha.1';
+const VERSION = '2.0.0-alpha.2';
 
 // ---------------------------------------------------------------------------
 // tiny arg parsing (no deps)
