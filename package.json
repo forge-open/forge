@@ -1,6 +1,6 @@
 {
   "name": "@forge-open/forge",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "description": "Open-source observability and optimization layer for AI coding-agent swarms. Your agents are working. Forge tells you how well.",
   "type": "module",
   "license": "MIT",
