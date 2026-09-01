@@ -91,7 +91,6 @@ emit today).
 | Claude Code  | ✅ Native adapter — works today    |
 | Codex CLI    | ✅ Native adapter — works today    |
 | Gemini CLI   | Planned                           |
-| OpenCode     | Planned                           |
 
 Detection and analysis are different things: Forge can *see* other agents but
 only reports what it can actually analyze. If a field is unavailable from a
